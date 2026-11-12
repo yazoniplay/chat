@@ -32,6 +32,7 @@ jobs:
           VITE_SUPABASE_URL: https://yolajnjkronukrypdcio.supabase.co
           VITE_SUPABASE_ANON_KEY: sb_publishable_gjSc4fN83ZccBbf8cTLZnQ_LuT3CBQ0
           VITE_GIPHY_API_KEY: ${{ secrets.GIPHY_API_KEY }}
+          VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY }}
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload Pages artifact
