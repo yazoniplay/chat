@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { supabase, isConfigured } from "./lib/supabase";
 import type { Session } from "@supabase/supabase-js";
-import { Search, MessageCircle, Users, Plus, Send, Smile, LogOut, Settings, Phone, Video, MoreVertical, ArrowLeft, X, CheckCheck, Image as ImageIcon, UserRound, Palette, Sun, Moon, Camera, Save, ShieldCheck, Trash2 } from "lucide-react";
+import { Search, MessageCircle, Users, Plus, Send, Smile, LogOut, Settings, Phone, Video, MoreVertical, ArrowLeft, X, CheckCheck, Image as ImageIcon, UserRound, Palette, Sun, Moon, Camera, Save, ShieldCheck, Trash2, Sparkles, Bot } from "lucide-react";
 import { ProfileDecoration } from "decoprofile";
 
 const TRANSPARENT_AVATAR = "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
@@ -10,6 +10,7 @@ const AVATAR_DECORATIONS = [{id:"halo",name:"Halo",kind:"halo"},{id:"angel",name
 type Profile = { id: string; username: string; display_name: string; avatar_url: string | null; banner_url?: string | null; status_message?: string | null; about_me?: string | null; display_name_font?: string | null; profile_gradient?: string | null; profile_gradient_custom?: string | null; profile_effect?: string | null; avatar_decoration?: string | null; deletion_requested_at?: string | null };
 type Conversation = { id: string; name: string | null; is_group: boolean; created_at: string; conversation_members?: { user_id: string; profiles: Profile | null }[] };
 type Message = { id: string; conversation_id: string; sender_id: string; content: string; kind: string; created_at: string };
+type AiMessage = { id: string; role: "user" | "assistant"; content: string; created_at: string };
 const EMOJIS = ["😀","😂","🥹","😍","😎","🔥","❤️","💀","😭","👍","🙏","🎉","💯","👀","🤝","✨","🥶","😈"];
 
 function Avatar({ profile, label, size = "md" }: { profile?: Profile | null; label?: string; size?: "sm" | "md" | "lg" }) {
@@ -51,6 +52,11 @@ export default function App() {
   const [sending, setSending] = useState(false);
   const [gifSearch, setGifSearch] = useState("");
   const [gifResults, setGifResults] = useState<{url:string; preview:string}[]>([]);
+  const [aiMode, setAiMode] = useState(false);
+  const [aiMessages, setAiMessages] = useState<AiMessage[]>([]);
+  const [aiDraft, setAiDraft] = useState("");
+  const [aiSending, setAiSending] = useState(false);
+  const [aiError, setAiError] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<"profile" | "appearance" | "theme" | "account">("profile");
   const [deleteConfirm, setDeleteConfirm] = useState(false);
@@ -203,7 +209,23 @@ export default function App() {
     return () => { live = false; supabase.removeChannel(channel); };
   }, [activeId]);
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+  useEffect(() => {
+    if (!aiMode || !isSelfChat(conversations.find(c => c.id === activeId)) || !session?.user) {
+      setAiMessages([]);
+      setAiError("");
+      return;
+    }
+    let live = true;
+    supabase.from("personal_ai_messages").select("id,role,content,created_at").eq("user_id", session.user.id).order("created_at", { ascending: true }).limit(100)
+      .then(({ data, error }) => {
+        if (!live) return;
+        if (error) setAiError(error.message);
+        setAiMessages((data || []) as AiMessage[]);
+      });
+    return () => { live = false; };
+  }, [aiMode, activeId, session?.user.id, conversations]);
+
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, aiMessages]);
 
   function openSettings() {
     setEditUsername(profile?.username || "");
@@ -365,6 +387,28 @@ export default function App() {
     setSending(false);
   }
 
+  async function sendAiMessage(e?: FormEvent) {
+    e?.preventDefault();
+    const prompt = aiDraft.trim();
+    if (!prompt || !session?.user || aiSending) return;
+    setAiSending(true);
+    setAiDraft("");
+    setAiError("");
+    const { error } = await supabase.functions.invoke("tuffchat-ai", { body: { message: prompt } });
+    if (error) {
+      setAiError(error.message || "Couldn't reach Tuffchat AI.");
+      setAiDraft(prompt);
+    } else {
+      const { data, error: loadError } = await supabase.from("personal_ai_messages")
+        .select("id,role,content,created_at")
+        .eq("user_id", session.user.id)
+        .order("created_at", { ascending: true }).limit(100);
+      if (loadError) setAiError(loadError.message);
+      setAiMessages((data || []) as AiMessage[]);
+    }
+    setAiSending(false);
+  }
+
   async function searchGifs(value: string) {
     setGifSearch(value);
     const key = import.meta.env.VITE_TENOR_API_KEY as string | undefined;
@@ -437,10 +481,10 @@ export default function App() {
       <footer className="side-footer"><span className="online-dot"/> Your space is ready</footer>
     </aside>
     <section className={`chat-panel ${mobileChat ? "chat-panel-mobile" : ""}`}>
-      {active ? <><header className="chat-header"><button className="mobile-back" onClick={()=>setMobileChat(false)}><ArrowLeft/></button><button className="avatar-open" onClick={()=>{if(activePerson)setViewedProfile(activePerson);}} aria-label={isSelfChat(active) ? "View your profile" : `View ${activeTitle} profile`}><Avatar profile={activePerson} label={activeTitle}/></button><div className="chat-heading"><b className={!active?.is_group && activePerson ? `profile-name-font-${activePerson.display_name_font || "modern"}` : undefined}>{activeTitle}</b><span>{isSelfChat(active) ? "Only you can see this chat" : active.is_group ? `${activeMembers.length} members` : "Direct message"}</span></div><div className="chat-header-actions"><button title="Voice call"><Phone size={18}/></button><button title="Video call"><Video size={19}/></button><button title="More"><MoreVertical size={19}/></button></div></header>
-      <div className="message-area"><div className="date-chip">TODAY</div>{messages.map(m=>{const mine=m.sender_id===session.user.id; const sender=activeMembers.find(x=>x.user_id===m.sender_id)?.profiles; return <div key={m.id} className={`message-line ${mine?"mine":""}`}>{!mine && active.is_group && <Avatar profile={sender} size="sm"/>}<div className="message-bubble">{!mine && active.is_group && <b className={`sender-name profile-name-font-${sender?.display_name_font || "modern"}`}>{sender?.display_name || sender?.username || "Member"}</b>}{m.kind==="gif" ? <img className="gif-message" src={m.content} alt="GIF"/> : <span>{m.content}</span>}<small>{new Date(m.created_at).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})} {mine && <CheckCheck size={14}/>}</small></div></div>;})}<div ref={bottomRef}/>{!messages.length && <div className="first-message"><div>{isSelfChat(active) ? "📝" : "👋"}</div><b>{isSelfChat(active) ? "Your own little corner." : "This is the start of something good."}</b><span>{isSelfChat(active) ? "Save notes, links, ideas and messages here." : "Send a message to kick things off."}</span></div>}</div>
-      {emojiOpen && <div className="emoji-tray">{EMOJIS.map(e=><button key={e} onClick={()=>setDraft(d=>d+e)}>{e}</button>)}</div>}
-      <form className="composer" onSubmit={e=>{e.preventDefault();sendMessage();}}><button type="button" title="GIFs" onClick={()=>setGifSearch(" ")}><ImageIcon size={21}/></button><button type="button" title="Emoji" onClick={()=>setEmojiOpen(!emojiOpen)}><Smile size={22}/></button><input value={draft} onChange={e=>setDraft(e.target.value)} placeholder="Type a message…" /><button type="submit" className="send-btn" disabled={!draft.trim() || sending}><Send size={19}/></button></form>
+      {active ? <><header className="chat-header"><button className="mobile-back" onClick={()=>setMobileChat(false)}><ArrowLeft/></button><button className="avatar-open" onClick={()=>{if(activePerson)setViewedProfile(activePerson);}} aria-label={isSelfChat(active) ? "View your profile" : `View ${activeTitle} profile`}><Avatar profile={activePerson} label={activeTitle}/></button><div className="chat-heading"><b className={!active?.is_group && activePerson ? `profile-name-font-${activePerson.display_name_font || "modern"}` : undefined}>{activeTitle}</b><span>{isSelfChat(active) ? {aiMode ? "AI assistant · powered by OpenRouter" : "Only you can see this chat"} : active.is_group ? `${activeMembers.length} members` : "Direct message"}</span></div><div className="chat-header-actions">{isSelfChat(active) && <button className={aiMode ? "active" : ""} title={aiMode ? "Back to your notes" : "Open AI Chat"} onClick={()=>{setAiMode(v=>!v);setAiError("");}}><Sparkles size={18}/></button>}<button title="Voice call"><Phone size={18}/></button><button title="Video call"><Video size={19}/></button><button title="More"><MoreVertical size={19}/></button></div></header>
+      <div className={`message-area ${aiMode ? "ai-message-area" : ""}`}>{aiMode ? <><div className="ai-welcome"><div className="ai-welcome-icon"><Sparkles size={22}/></div><b>Your Tuffchat AI</b><span>Ask anything. Your AI conversation is private and separate from your notes.</span></div>{aiMessages.map(m=><div key={m.id} className={`ai-message-line ${m.role==="user"?"mine":"assistant"}`}><div className="ai-message-bubble">{m.role==="assistant" && <b><Bot size={14}/> Tuffchat AI</b>}<span>{m.content}</span><small>{new Date(m.created_at).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</small></div></div>)}<div ref={bottomRef}/>{aiError && <div className="ai-error">{aiError}</div>}</> : <><div className="date-chip">TODAY</div>{messages.map(m=>{const mine=m.sender_id===session.user.id; const sender=activeMembers.find(x=>x.user_id===m.sender_id)?.profiles; return <div key={m.id} className={`message-line ${mine?"mine":""}`}>{!mine && active.is_group && <Avatar profile={sender} size="sm"/>}<div className="message-bubble">{!mine && active.is_group && <b className={`sender-name profile-name-font-${sender?.display_name_font || "modern"}`}>{sender?.display_name || sender?.username || "Member"}</b>}{m.kind==="gif" ? <img className="gif-message" src={m.content} alt="GIF"/> : <span>{m.content}</span>}<small>{new Date(m.created_at).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})} {mine && <CheckCheck size={14}/>}</small></div></div>;})}<div ref={bottomRef}/>{!messages.length && <div className="first-message"><div>{isSelfChat(active) ? "📝" : "👋"}</div><b>{isSelfChat(active) ? "Your own little corner." : "This is the start of something good."}</b><span>{isSelfChat(active) ? "Save notes, links, ideas and messages here." : "Send a message to kick things off."}</span><</>}</div>
+      {!aiMode && emojiOpen && <div className="emoji-tray">{EMOJIS.map(e=><button key={e} onClick={()=>setDraft(d=>d+e)}>{e}</button>)}</div>}
+      {aiMode ? <form className="composer ai-composer" onSubmit={sendAiMessage}><input value={aiDraft} onChange={e=>setAiDraft(e.target.value)} placeholder="Message Tuffchat AI…" /><button type="submit" className="send-btn" disabled={!aiDraft.trim() || aiSending}>{aiSending ? <span className="ai-spinner"/> : <Send size={19}/>}</button></form> : <form className="composer" onSubmit={e=>{e.preventDefault();sendMessage();}}><button type="button" title="GIFs" onClick={()=>setGifSearch(" ")}><ImageIcon size={21}/></button><button type="button" title="Emoji" onClick={()=>setEmojiOpen(!emojiOpen)}><Smile size={22}/></button><input value={draft} onChange={e=>setDraft(e.target.value)} placeholder="Type a message…" /><button type="submit" className="send-btn" disabled={!draft.trim() || sending}><Send size={19}/></button></form>}
       </> : <div className="welcome-panel"><div className="welcome-graphic"><div className="welcome-icon"><MessageCircle size={42}/></div><span>✦</span><span>✦</span></div><h1>Good to see you.</h1><p>Pick a conversation or find your people to get started.</p><button className="primary-btn" onClick={()=>setShowPeople(true)}><Plus size={18}/> Start a chat</button><div className="encryption-note">Private conversations for your favourite people.</div></div>}
     </section>
     {showPeople && <div className="modal-backdrop" onClick={()=>setShowPeople(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><div><h2>Find your people</h2><p>Search by their username.</p></div><button onClick={()=>setShowPeople(false)}><X/></button></div><div className="modal-search"><Search size={18}/><input autoFocus value={search} onChange={e=>searchPeople(e.target.value)} placeholder="Search usernames…"/></div>{people.map(p=><button className="person-row" key={p.id} onClick={()=>startDirect(p)}><Avatar profile={p}/><span><b className={`profile-name-font-${p.display_name_font || "modern"}`}>{p.display_name || p.username}</b><small>@{p.username}</small></span><MessageCircle size={18}/></button>)}{search.length<2 && <div className="modal-hint">Type at least 2 characters to search.</div>}{search.length>=2 && !people.length && <div className="modal-hint">No users found yet.</div>}</div></div>}
