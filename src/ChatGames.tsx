@@ -6,7 +6,7 @@ import "./chat-games.css";
 
 type Member = { user_id: string; profiles?: { username?: string; display_name?: string; avatar_url?: string | null } | null };
 type ChatGame = { id: string; conversation_id: string; game_type: string; status: "pending" | "active" | "finished" | "declined"; opponent_type: "human" | "ai"; created_by: string; white_player: string; black_player: string | null; fen: string; pgn: string; winner: string | null; created_at: string; updated_at: string };
-type Props = { conversationId: string; userId: string; members: Member[]; conversationName: string };
+type Props = { conversationId: string; userId: string; members: Member[]; conversationName: string; onClose: () => void };
 
 const pieces: Record<string, string> = { wk:"♔", wq:"♕", wr:"♖", wb:"♗", wn:"♘", wp:"♙", bk:"♚", bq:"♛", br:"♜", bb:"♝", bn:"♞", bp:"♟︎" };
 const initialFen = new Chess().fen();
@@ -16,7 +16,7 @@ const playerName = (members: Member[], id: string | null) => {
   return p?.display_name || p?.username || "Player";
 };
 
-export default function ChatGames({ conversationId, userId, members, conversationName }: Props) {
+export default function ChatGames({ conversationId, userId, members, conversationName, onClose }: Props) {
   const [games, setGames] = useState<ChatGame[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -30,7 +30,7 @@ export default function ChatGames({ conversationId, userId, members, conversatio
   const [promotion, setPromotion] = useState<{from: Square; to: Square} | null>(null);
 
   const opponents = members.filter(member => member.user_id !== userId);
-  const selectedGame = games.find(game => game.id === selectedId) || games[0] || null;
+  const selectedGame = selectedId ? games.find(game => game.id === selectedId) || null : null;
 
   async function refresh() {
     const { data, error: queryError } = await supabase.from("chat_games").select("*").eq("conversation_id", conversationId).order("updated_at", { ascending: false });
@@ -134,7 +134,16 @@ export default function ChatGames({ conversationId, userId, members, conversatio
     if (invokeError || !data?.move) { setError(invokeError?.message || data?.error || "Tuffchat AI couldn't find a move. Try again."); return; }
     const uci = String(data.move);
     if (!legal.includes(uci)) { setError("Tuffchat AI returned an invalid move. Try again."); return; }
-    await saveMove(uci.slice(0,2) as Square, uci.slice(2,4) as Square, uci[4] || "q", true);
+    const aiPosition = new Chess(game.fen);
+    try { aiPosition.move({ from: uci.slice(0,2) as Square, to: uci.slice(2,4) as Square, promotion: uci[4] || "q" }); }
+    catch { setError("Tuffchat AI suggested an illegal move. Try again."); return; }
+    const finished = aiPosition.isGameOver();
+    const winner = aiPosition.isCheckmate() ? (aiPosition.turn() === "w" ? game.black_player : game.white_player) : null;
+    const { data: saved, error: saveError } = await supabase.from("chat_games")
+      .update({ fen: aiPosition.fen(), pgn: aiPosition.pgn(), status: finished ? "finished" : "active", winner, updated_at: new Date().toISOString() })
+      .eq("id", game.id).eq("fen", game.fen).select("*").maybeSingle();
+    if (saveError || !saved) { setError(saveError?.message || "The board changed while AI was thinking. Refreshing…"); await refresh(); return; }
+    setGames(prev => prev.map(item => item.id === game.id ? saved as ChatGame : item));
   }
 
   function chooseSquare(square: Square) {
@@ -161,7 +170,7 @@ export default function ChatGames({ conversationId, userId, members, conversatio
   }
 
   return <section className="chat-games">
-    <div className="chat-games-top"><div className="chat-games-heading"><span className="chat-games-icon"><Gamepad2 size={19}/></span><div><b>Games</b><small>Play something together in {conversationName}</small></div></div><button className="chat-games-close" onClick={() => setSelectedId(null)} title="Close game panel"><X size={18}/></button></div>
+    <div className="chat-games-top"><div className="chat-games-heading"><span className="chat-games-icon"><Gamepad2 size={19}/></span><div><b>Games</b><small>Play something together in {conversationName}</small></div></div><button className="chat-games-close" onClick={onClose} title="Close game panel"><X size={18}/></button></div>
     {!selectedGame || selectedGame.status === "declined" || (selectedGame.status === "finished" && !selectedId) ? <div className="chat-games-lobby">
       <div className="chat-games-hero"><span>♟</span><h3>Take a little break.</h3><p>Challenge a friend or play a match against Tuffchat AI.</p></div>
       <button className="chat-game-choice" disabled={creating} onClick={() => void createGame("ai")}><span className="game-choice-icon ai"><Bot size={21}/></span><span><b>Play against AI</b><small>Start a private chess match</small></span><Swords size={18}/></button>
