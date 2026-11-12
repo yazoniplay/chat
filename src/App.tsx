@@ -411,12 +411,16 @@ export default function App() {
 
   async function searchGifs(value: string) {
     setGifSearch(value);
-    const key = import.meta.env.VITE_TENOR_API_KEY as string | undefined;
+    const key = import.meta.env.VITE_GIPHY_API_KEY as string | undefined;
     if (!key || value.trim().length < 2) { setGifResults([]); return; }
     try {
-      const res = await fetch(`https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(value)}&key=${key}&limit=12&media_filter=tinygif,gif`);
+      const params = new URLSearchParams({ api_key: key, q: value, limit: "12", rating: "pg-13", lang: "en" });
+      const res = await fetch(`https://api.giphy.com/v1/gifs/search?${params.toString()}`);
       const json = await res.json();
-      setGifResults((json.results || []).map((item: any) => ({ url: item.media_formats?.gif?.url, preview: item.media_formats?.tinygif?.url })).filter((g: any) => g.url));
+      setGifResults((json.data || []).map((item: any) => ({
+        url: item.images?.original?.url || item.images?.fixed_width?.url,
+        preview: item.images?.fixed_width_small?.url || item.images?.fixed_width?.url
+      })).filter((g: any) => g.url));
     } catch { setGifResults([]); }
   }
 
@@ -489,6 +493,6 @@ export default function App() {
     </section>
     {showPeople && <div className="modal-backdrop" onClick={()=>setShowPeople(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><div><h2>Find your people</h2><p>Search by their username.</p></div><button onClick={()=>setShowPeople(false)}><X/></button></div><div className="modal-search"><Search size={18}/><input autoFocus value={search} onChange={e=>searchPeople(e.target.value)} placeholder="Search usernames…"/></div>{people.map(p=><button className="person-row" key={p.id} onClick={()=>startDirect(p)}><Avatar profile={p}/><span><b className={`profile-name-font-${p.display_name_font || "modern"}`}>{p.display_name || p.username}</b><small>@{p.username}</small></span><MessageCircle size={18}/></button>)}{search.length<2 && <div className="modal-hint">Type at least 2 characters to search.</div>}{search.length>=2 && !people.length && <div className="modal-hint">No users found yet.</div>}</div></div>}
     {showGroup && <div className="modal-backdrop" onClick={()=>setShowGroup(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><div><h2>Make a group</h2><p>Bring the whole crew together.</p></div><button onClick={()=>setShowGroup(false)}><X/></button></div><label className="modal-label">Group name<input value={groupName} onChange={e=>setGroupName(e.target.value)} placeholder="The gang" /></label><div className="modal-search"><Search size={18}/><input value={groupSearch} onChange={e=>searchPeople(e.target.value,true)} placeholder="Add people by username…"/></div>{groupPeople.map(p=><button className="person-row" key={p.id} onClick={()=>setSelectedPeople(s=>s.includes(p.id)?s.filter(x=>x!==p.id):[...s,p.id])}><Avatar profile={p}/><span><b className={`profile-name-font-${p.display_name_font || "modern"}`}>{p.display_name || p.username}</b><small>@{p.username}</small></span><span className={`select-dot ${selectedPeople.includes(p.id) ? "checked" : ""}`}>{selectedPeople.includes(p.id)?"✓":"+"}</span></button>)}<div className="modal-bottom"><span>{selectedPeople.length} selected</span><button className="primary-btn" disabled={!groupName.trim() || !selectedPeople.length} onClick={createGroup}>Create group</button></div></div></div>}
-    {gifSearch.length>0 && <div className="gif-search-float"><div className="modal-head"><b>GIF search</b><button onClick={()=>{setGifSearch("");setGifResults([]);}}><X/></button></div><input autoFocus value={gifSearch.trimStart()} onChange={e=>searchGifs(e.target.value)} placeholder="Search GIFs…"/><div className="gif-grid">{gifResults.map(g=><button key={g.url} onClick={()=>{sendMessage(g.url,"gif");setGifSearch("");setGifResults([]);}}><img src={g.preview || g.url} alt="GIF"/></button>)}</div></div>}
+    {gifSearch.length>0 && <div className="gif-search-float"><div className="modal-head"><b>GIF search</b><button onClick={()=>{setGifSearch("");setGifResults([]);}}><X/></button></div><input autoFocus value={gifSearch.trimStart()} onChange={e=>searchGifs(e.target.value)} placeholder="Search GIFs…"/><div className="gif-grid">{gifResults.map(g=><button key={g.url} onClick={()=>{sendMessage(g.url,"gif");setGifSearch("");setGifResults([]);}}><img src={g.preview || g.url} alt="GIF"/></button>)}</div><div className="giphy-credit">Powered by GIPHY</div></div>}
     </main>;
 }
