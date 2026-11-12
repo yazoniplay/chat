@@ -633,3 +633,14 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent-light);o
 .ai-attached-image{margin:5px 0 8px;max-width:min(100%,420px);max-height:360px;object-fit:contain;border-radius:12px;border:1px solid #ffffff18}
 
 .push-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}.push-actions .primary-btn,.push-actions .secondary-btn{white-space:nowrap}@media(max-width:560px){.push-actions{width:100%;flex-direction:column}.push-actions button{width:100%;justify-content:center}}
+
+
+/* Collapsible conversation sidebar */
+.sidebar{flex:0 0 390px;overflow:hidden;transition:flex-basis .28s cubic-bezier(.2,.8,.2,1),min-width .28s ease,width .28s ease,opacity .2s ease}
+.sidebar-collapsed{flex-basis:0!important;width:0!important;min-width:0!important;opacity:0;border-right:0!important;pointer-events:none}
+.side-header .side-actions button:first-child{color:var(--accent-light)}
+.sidebar-reopen{display:none;flex:0 0 36px;width:36px;height:36px;border:0;border-radius:10px;background:#26343d;color:#bdc8ce;place-items:center}
+.sidebar-reopen.visible{display:grid;animation:sidebar-control-in .2s ease both}
+.sidebar-reopen:hover{background:color-mix(in srgb,var(--accent) 22%,#26343d);color:#fff}
+@keyframes sidebar-control-in{from{opacity:0;transform:translateX(-5px)}to{opacity:1;transform:translateX(0)}}
+@media(max-width:760px){.sidebar{flex-basis:auto}.sidebar-collapsed{display:none!important}.sidebar-reopen{display:none!important}}
