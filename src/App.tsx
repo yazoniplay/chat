@@ -534,7 +534,7 @@ export default function App() {
       forwarded_from: forwardingMessage.id
     });
     if (error) setMessageError(error.message);
-    else setMessageError("");
+    else { setMessageError(""); void supabase.functions.invoke("tuffchat-push", { body: { event: "message", conversation_id: conversation.id, content: forwardingMessage.content } }); }
     setForwardingMessage(null);
   }
 
