@@ -361,3 +361,58 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent-light);o
   .profile-status-full,.profile-about{margin-left:16px;margin-right:16px}
   .profile-card-footer{padding:16px}
 }
+
+
+/* Full-card Discord-inspired profile theme */
+.profile-card{
+  background-size:180% 180%;
+  background-position:center;
+  border-color:#ffffff45;
+}
+.profile-banner{
+  background:linear-gradient(180deg,#10131a35 0%,transparent 100%);
+}
+.profile-banner-image{
+  z-index:1;
+  opacity:.88;
+  mix-blend-mode:normal;
+}
+.profile-card-main,
+.profile-status-full,
+.profile-about,
+.profile-card-footer{
+  position:relative;
+  z-index:2;
+}
+.profile-card-main .avatar{
+  box-shadow:0 5px 22px #0005;
+}
+.profile-card-identity h2,
+.profile-card-identity span{
+  text-shadow:0 2px 8px #0007;
+}
+.profile-status-full{
+  background:#10131a72;
+  border:1px solid #ffffff2b;
+  color:#fff;
+  backdrop-filter:blur(12px);
+}
+.profile-about{
+  background:#10131a72;
+  border:1px solid #ffffff2b;
+  color:#fff;
+  backdrop-filter:blur(12px);
+}
+.profile-about h3,.profile-about p{color:#fff}
+.profile-card-footer .primary-btn{
+  box-shadow:0 4px 18px #0004;
+}
+.theme-light .profile-card{
+  color:#fff;
+}
+.theme-light .profile-card-main .avatar{border-color:#fff}
+.theme-light .profile-status-full,
+.theme-light .profile-about{
+  background:#10131a72;
+  color:#fff;
+}
