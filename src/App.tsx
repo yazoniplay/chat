@@ -121,9 +121,31 @@ export default function App() {
     if (!session?.user) return;
     const { data: memberships } = await supabase.from("conversation_members").select("conversation_id").eq("user_id", session.user.id);
     const ids = (memberships || []).map((m: {conversation_id:string}) => m.conversation_id);
-    if (!ids.length) { setConversations([]); return; }
-    const { data } = await supabase.from("conversations").select("id,name,is_group,created_at,conversation_members(user_id,profiles(id,username,display_name,avatar_url,banner_url,status_message,about_me,display_name_font,profile_gradient,profile_gradient_custom,profile_effect,avatar_decoration))").in("id", ids).order("created_at", { ascending: false });
-    setConversations((data || []) as unknown as Conversation[]);
+    let rows: Conversation[] = [];
+    if (ids.length) {
+      const { data } = await supabase.from("conversations").select("id,name,is_group,created_at,conversation_members(user_id,profiles(id,username,display_name,avatar_url,banner_url,status_message,about_me,display_name_font,profile_gradient,profile_gradient_custom,profile_effect,avatar_decoration))").in("id", ids).order("created_at", { ascending: false });
+      rows = (data || []) as unknown as Conversation[];
+    }
+    const hasSelfChat = rows.some(c => !c.is_group && c.conversation_members?.length === 1 && c.conversation_members[0].user_id === session.user.id);
+    if (!hasSelfChat) {
+      const { data: selfConversation, error: createError } = await supabase.from("conversations").insert({ created_by: session.user.id, is_group: false }).select("id,name,is_group,created_at").single();
+      if (createError || !selfConversation) {
+        setAuthError(createError?.message || "Couldn't create your personal chat.");
+      } else {
+        const { error: memberError } = await supabase.from("conversation_members").insert({ conversation_id: selfConversation.id, user_id: session.user.id });
+        if (memberError) {
+          setAuthError(memberError.message);
+        } else {
+          let ownProfile = profile;
+          if (!ownProfile) {
+            const { data: ownData } = await supabase.from("profiles").select("id,username,display_name,avatar_url,banner_url,status_message,about_me,display_name_font,profile_gradient,profile_gradient_custom,profile_effect,avatar_decoration").eq("id", session.user.id).maybeSingle();
+            ownProfile = ownData as Profile | null;
+          }
+          rows.unshift({ ...selfConversation, conversation_members: [{ user_id: session.user.id, profiles: ownProfile }] } as Conversation);
+        }
+      }
+    }
+    setConversations(rows);
   }
 
   useEffect(() => {
@@ -157,8 +179,10 @@ export default function App() {
 
   const active = conversations.find(c => c.id === activeId);
   const activeMembers = active?.conversation_members || [];
+  const isSelfChat = (conversation?: Conversation) => !!conversation && !!session?.user && !conversation.is_group && conversation.conversation_members?.length === 1 && conversation.conversation_members[0].user_id === session.user.id;
   const otherMember = activeMembers.find(m => m.user_id !== session?.user.id)?.profiles;
-  const activeTitle = active?.is_group ? (active.name || "Group chat") : (otherMember?.display_name || otherMember?.username || "Chat");
+  const activePerson = isSelfChat(active) ? profile : otherMember;
+  const activeTitle = isSelfChat(active) ? "You" : active?.is_group ? (active.name || "Group chat") : (otherMember?.display_name || otherMember?.username || "Chat");
 
   useEffect(() => {
     if (!activeId) { setMessages([]); return; }
@@ -346,9 +370,9 @@ export default function App() {
     } catch { setGifResults([]); }
   }
 
-  const sortedConversations = useMemo(() => conversations.filter(c => !c.is_group), [conversations]);
+  const sortedConversations = useMemo(() => conversations.filter(c => !c.is_group).sort((a, b) => Number(isSelfChat(b)) - Number(isSelfChat(a))), [conversations, session?.user.id]);
   const groupConversations = useMemo(() => conversations.filter(c => c.is_group), [conversations]);
-  const lastMessages = useMemo(() => Object.fromEntries(sortedConversations.map(c => [c.id, "Tap to open conversation"])), [sortedConversations]);
+  const lastMessages = useMemo(() => Object.fromEntries(sortedConversations.map(c => [c.id, isSelfChat(c) ? "Your private space for notes and links" : "Tap to open conversation"])), [sortedConversations, session?.user.id]);
 
   if (!isConfigured) return <div className="setup-screen"><div className="setup-card"><div className="brand-mark">t</div><h1>Welcome to <span>Tuffchat</span></h1><p>Your crew, one chat away.</p><div className="setup-step"><b>One quick setup step</b><p>Connect a free Supabase project to power accounts, chats and live messages.</p><ol><li>Create a project at <a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer">supabase.com</a>.</li><li>Run <code>supabase/migrations/0001_tuffchat.sql</code> in its SQL Editor.</li><li>Copy <code>.env.example</code> to <code>.env.local</code> and add your project URL and anon key.</li></ol></div><p className="muted">No secret service-role key belongs in this app.</p></div></div>;
 
@@ -402,13 +426,13 @@ export default function App() {
       <div className="search-box"><Search size={17}/><input placeholder="Search or start a new chat" value={search} onChange={e=>searchPeople(e.target.value)} /><button onClick={()=>setShowPeople(true)} title="Find people"><Plus size={17}/></button></div>
       {search.length >= 2 && <div className="search-results">{people.map(p=><button className="person-row" key={p.id} onClick={()=>startDirect(p)}><Avatar profile={p}/><span><b className={`profile-name-font-${p.display_name_font || "modern"}`}>{p.display_name || p.username}</b><small>@{p.username}</small></span><MessageCircle size={17}/></button>)}</div>}
       <div className="chat-list-label">DIRECT MESSAGES <span>{sortedConversations.length}</span></div>
-      <div className="chat-list">{sortedConversations.map(c=>{const member = c.conversation_members?.find(m=>m.user_id!==session.user.id)?.profiles; const title = c.is_group ? c.name || "Group chat" : member?.display_name || member?.username || "Direct chat"; return <button key={c.id} className={`chat-row ${activeId===c.id?"selected":""}`} onClick={()=>{setActiveId(c.id);setMobileChat(true);}}><button className="avatar-open" onClick={e=>{e.stopPropagation();if(member)setViewedProfile(member);}} aria-label={`View ${title} profile`}><Avatar profile={member} label={title}/></button><span className="chat-row-copy"><b className={member ? `profile-name-font-${member.display_name_font || "modern"}` : undefined}>{title}</b><small>{lastMessages[c.id]}</small></span><span className="chat-time">{new Date(c.created_at).toLocaleDateString([], {month:"short",day:"numeric"})}</span></button>;})}
+      <div className="chat-list">{sortedConversations.map(c=>{const selfChat = isSelfChat(c); const member = selfChat ? profile : c.conversation_members?.find(m=>m.user_id!==session.user.id)?.profiles; const title = selfChat ? "You" : c.is_group ? c.name || "Group chat" : member?.display_name || member?.username || "Direct chat"; return <button key={c.id} className={`chat-row ${activeId===c.id?"selected":""} ${selfChat?"self-chat-row":""}`} onClick={()=>{setActiveId(c.id);setMobileChat(true);}}><span className="avatar-open" aria-hidden="true"><Avatar profile={member} label={title}/></span><span className="chat-row-copy"><b className={member ? `profile-name-font-${member.display_name_font || "modern"}` : undefined}>{title}</b><small>{lastMessages[c.id]}</small></span><span className="chat-time">{selfChat ? "NOTE" : new Date(c.created_at).toLocaleDateString([], {month:"short",day:"numeric"})}</span></button>;})}
       {!sortedConversations.length && <div className="empty-list"><MessageCircle size={26}/><b>No direct messages yet</b><span>Find a friend and say hello.</span><button onClick={()=>setShowPeople(true)}>Find people</button></div>}</div>
       <footer className="side-footer"><span className="online-dot"/> Your space is ready</footer>
     </aside>
     <section className={`chat-panel ${mobileChat ? "chat-panel-mobile" : ""}`}>
-      {active ? <><header className="chat-header"><button className="mobile-back" onClick={()=>setMobileChat(false)}><ArrowLeft/></button><button className="avatar-open" onClick={()=>{if(otherMember)setViewedProfile(otherMember);}} aria-label={`View ${activeTitle} profile`}><Avatar profile={otherMember} label={activeTitle}/></button><div className="chat-heading"><b className={!active?.is_group && otherMember ? `profile-name-font-${otherMember.display_name_font || "modern"}` : undefined}>{activeTitle}</b><span>{active.is_group ? `${activeMembers.length} members` : "Direct message"}</span></div><div className="chat-header-actions"><button title="Voice call"><Phone size={18}/></button><button title="Video call"><Video size={19}/></button><button title="More"><MoreVertical size={19}/></button></div></header>
-      <div className="message-area"><div className="date-chip">TODAY</div>{messages.map(m=>{const mine=m.sender_id===session.user.id; const sender=activeMembers.find(x=>x.user_id===m.sender_id)?.profiles; return <div key={m.id} className={`message-line ${mine?"mine":""}`}>{!mine && active.is_group && <Avatar profile={sender} size="sm"/>}<div className="message-bubble">{!mine && active.is_group && <b className={`sender-name profile-name-font-${sender?.display_name_font || "modern"}`}>{sender?.display_name || sender?.username || "Member"}</b>}{m.kind==="gif" ? <img className="gif-message" src={m.content} alt="GIF"/> : <span>{m.content}</span>}<small>{new Date(m.created_at).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})} {mine && <CheckCheck size={14}/>}</small></div></div>;})}<div ref={bottomRef}/>{!messages.length && <div className="first-message"><div>👋</div><b>This is the start of something good.</b><span>Send a message to kick things off.</span></div>}</div>
+      {active ? <><header className="chat-header"><button className="mobile-back" onClick={()=>setMobileChat(false)}><ArrowLeft/></button><button className="avatar-open" onClick={()=>{if(activePerson)setViewedProfile(activePerson);}} aria-label={isSelfChat(active) ? "View your profile" : `View ${activeTitle} profile`}><Avatar profile={activePerson} label={activeTitle}/></button><div className="chat-heading"><b className={!active?.is_group && activePerson ? `profile-name-font-${activePerson.display_name_font || "modern"}` : undefined}>{activeTitle}</b><span>{isSelfChat(active) ? "Only you can see this chat" : active.is_group ? `${activeMembers.length} members` : "Direct message"}</span></div><div className="chat-header-actions"><button title="Voice call"><Phone size={18}/></button><button title="Video call"><Video size={19}/></button><button title="More"><MoreVertical size={19}/></button></div></header>
+      <div className="message-area"><div className="date-chip">TODAY</div>{messages.map(m=>{const mine=m.sender_id===session.user.id; const sender=activeMembers.find(x=>x.user_id===m.sender_id)?.profiles; return <div key={m.id} className={`message-line ${mine?"mine":""}`}>{!mine && active.is_group && <Avatar profile={sender} size="sm"/>}<div className="message-bubble">{!mine && active.is_group && <b className={`sender-name profile-name-font-${sender?.display_name_font || "modern"}`}>{sender?.display_name || sender?.username || "Member"}</b>}{m.kind==="gif" ? <img className="gif-message" src={m.content} alt="GIF"/> : <span>{m.content}</span>}<small>{new Date(m.created_at).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})} {mine && <CheckCheck size={14}/>}</small></div></div>;})}<div ref={bottomRef}/>{!messages.length && <div className="first-message"><div>{isSelfChat(active) ? "📝" : "👋"}</div><b>{isSelfChat(active) ? "Your own little corner." : "This is the start of something good."}</b><span>{isSelfChat(active) ? "Save notes, links, ideas and messages here." : "Send a message to kick things off."}</span></div>}</div>
       {emojiOpen && <div className="emoji-tray">{EMOJIS.map(e=><button key={e} onClick={()=>setDraft(d=>d+e)}>{e}</button>)}</div>}
       <form className="composer" onSubmit={e=>{e.preventDefault();sendMessage();}}><button type="button" title="GIFs" onClick={()=>setGifSearch(" ")}><ImageIcon size={21}/></button><button type="button" title="Emoji" onClick={()=>setEmojiOpen(!emojiOpen)}><Smile size={22}/></button><input value={draft} onChange={e=>setDraft(e.target.value)} placeholder="Type a message…" /><button type="submit" className="send-btn" disabled={!draft.trim() || sending}><Send size={19}/></button></form>
       </> : <div className="welcome-panel"><div className="welcome-graphic"><div className="welcome-icon"><MessageCircle size={42}/></div><span>✦</span><span>✦</span></div><h1>Good to see you.</h1><p>Pick a conversation or find your people to get started.</p><button className="primary-btn" onClick={()=>setShowPeople(true)}><Plus size={18}/> Start a chat</button><div className="encryption-note">Private conversations for your favourite people.</div></div>}
