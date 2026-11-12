@@ -41,7 +41,6 @@ export default function App() {
   const [gifSearch, setGifSearch] = useState("");
   const [gifResults, setGifResults] = useState<{url:string; preview:string}[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"chats" | "servers">("chats");
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deletionBusy, setDeletionBusy] = useState(false);
   const [deletionError, setDeletionError] = useState("");
@@ -248,7 +247,7 @@ export default function App() {
     const { data: convo, error } = await supabase.from("conversations").insert({ created_by: session.user.id, name: groupName.trim(), is_group: true }).select().single();
     if (error || !convo) { setAuthError(error?.message || "Couldn't create group."); return; }
     await supabase.from("conversation_members").insert([session.user.id, ...selectedPeople].map(user_id => ({ conversation_id: convo.id, user_id })));
-    await loadConversations(); setActiveTab("servers"); setActiveId(convo.id); setMobileChat(true); setShowGroup(false); setSelectedPeople([]); setGroupName(""); setGroupSearch("");
+    await loadConversations(); setActiveId(convo.id); setMobileChat(true); setShowGroup(false); setSelectedPeople([]); setGroupName(""); setGroupSearch("");
   }
 
   async function sendMessage(content = draft, kind = "text") {
@@ -270,7 +269,8 @@ export default function App() {
     } catch { setGifResults([]); }
   }
 
-  const sortedConversations = useMemo(() => conversations.filter(c => activeTab === "servers" ? c.is_group : !c.is_group), [conversations, activeTab]);
+  const sortedConversations = useMemo(() => conversations.filter(c => !c.is_group), [conversations]);
+  const groupConversations = useMemo(() => conversations.filter(c => c.is_group), [conversations]);
   const lastMessages = useMemo(() => Object.fromEntries(sortedConversations.map(c => [c.id, "Tap to open conversation"])), [sortedConversations]);
 
   if (!isConfigured) return <div className="setup-screen"><div className="setup-card"><div className="brand-mark">t</div><h1>Welcome to <span>Tuffchat</span></h1><p>Your crew, one chat away.</p><div className="setup-step"><b>One quick setup step</b><p>Connect a free Supabase project to power accounts, chats and live messages.</p><ol><li>Create a project at <a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer">supabase.com</a>.</li><li>Run <code>supabase/migrations/0001_tuffchat.sql</code> in its SQL Editor.</li><li>Copy <code>.env.example</code> to <code>.env.local</code> and add your project URL and anon key.</li></ol></div><p className="muted">No secret service-role key belongs in this app.</p></div></div>;
@@ -283,15 +283,27 @@ export default function App() {
 
   return <main className={`app-shell theme-${theme}`}>
     {settingsOpen && <div className="modal-backdrop settings-backdrop" onClick={()=>setSettingsOpen(false)}><form className="settings-modal" onSubmit={saveProfile} onClick={e=>e.stopPropagation()}><div className="settings-top"><div><span className="settings-kicker">YOUR ACCOUNT</span><h2>Settings</h2><p>Make Tuffchat feel like yours.</p></div><button type="button" className="icon-close" onClick={()=>setSettingsOpen(false)} aria-label="Close settings"><X size={20}/></button></div><div className="settings-section-title"><UserRound size={16}/> Profile</div><div className="avatar-editor"><div className="avatar-preview">{avatarPreview ? <img src={avatarPreview} alt="Profile preview"/> : <Avatar profile={profile} size="lg"/>}</div><label className="upload-avatar"><Camera size={15}/> Change photo<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={e=>setAvatarFile(e.target.files?.[0] || null)}/></label><span className="field-hint">JPG, PNG, WEBP or GIF. Max 5 MB.</span></div><label className="settings-field"><span>Username</span><div className="username-input"><span>@</span><input value={editUsername} onChange={e=>setEditUsername(e.target.value)} maxLength={20} autoComplete="username" /></div><small>3–20 characters · letters, numbers and _</small></label><label className="settings-field"><span>Display name</span><input value={editDisplayName} onChange={e=>setEditDisplayName(e.target.value)} maxLength={40} placeholder="Your name" /></label><div className="settings-divider"/><div className="settings-section-title"><Palette size={16}/> Appearance</div><div className="theme-choice"><button type="button" className={theme==="light"?"theme-option active":"theme-option"} onClick={()=>setTheme("light")}><Sun size={19}/><span><b>Light mode</b><small>Bright and clean</small></span>{theme==="light" && <CheckCheck size={17}/>}</button><button type="button" className={theme==="dark"?"theme-option active":"theme-option"} onClick={()=>setTheme("dark")}><Moon size={19}/><span><b>Dark mode</b><small>Easy on the eyes</small></span>{theme==="dark" && <CheckCheck size={17}/>}</button></div><div className="settings-footnote"><ShieldCheck size={15}/> Your profile changes are saved to your Tuffchat account.</div><div className="account-danger-zone"><div><b>Delete account</b><p>Your account is deactivated immediately. You have 30 days to restore it before permanent deletion.</p></div>{!deleteConfirm ? <button type="button" className="danger-btn" onClick={()=>{setDeleteConfirm(true);setDeletionError("");}}><Trash2 size={15}/> Delete account</button> : <div className="delete-confirm"><span>Are you sure? You’ll be signed out of chats and your 30-day countdown will start.</span><button type="button" className="cancel-btn" onClick={()=>setDeleteConfirm(false)}>Keep account</button><button type="button" className="danger-btn" disabled={deletionBusy} onClick={requestAccountDeletion}>{deletionBusy ? "Deactivating…" : "Yes, deactivate"}</button></div>}</div>{deletionError && <div className="settings-error">{deletionError}</div>}{profileSaveError && <div className="settings-error">{profileSaveError}</div>}<div className="settings-actions"><button type="button" className="signout-btn" onClick={async()=>{await supabase.auth.signOut();setSettingsOpen(false);}}><LogOut size={16}/> Sign out</button><button type="button" className="cancel-btn" onClick={()=>setSettingsOpen(false)}>Cancel</button><button className="primary-btn" type="submit" disabled={profileSaving}><Save size={16}/>{profileSaving?"Saving…":"Save changes"}</button></div></form></div>}
+    <nav className={`group-rail ${mobileChat ? "group-rail-hidden" : ""}`} aria-label="Tuffchat navigation">
+      <button className={`rail-home ${!active || !active.is_group ? "rail-selected" : ""}`} title="Chats" aria-label="Chats" onClick={()=>{setActiveId(null);setMobileChat(false);}}>
+        <MessageCircle size={22}/>
+      </button>
+      <div className="rail-divider"/>
+      <div className="group-rail-label">GROUPS</div>
+      <div className="group-rail-list">
+        {groupConversations.map(group => <button key={group.id} className={`group-rail-icon ${activeId===group.id ? "rail-selected" : ""}`} title={group.name || "Group"} aria-label={`Open group ${group.name || "Group"}`} onClick={()=>{setActiveId(group.id);setMobileChat(true);}}>
+          <span>{(group.name || "G").trim().charAt(0).toUpperCase()}</span>
+        </button>)}
+      </div>
+      <button className="group-rail-add" title="Create group" aria-label="Create group" onClick={()=>setShowGroup(true)}><Plus size={22}/></button>
+    </nav>
     <aside className={`sidebar ${mobileChat ? "sidebar-hidden" : ""}`}>
-      <header className="side-header"><div className="brand-lockup"><div className="brand-mark small">t</div><b>tuffchat</b></div><div className="side-actions"><button title="Create server" onClick={()=>{setActiveTab("servers");setShowGroup(true);}}><Users size={19}/></button><button title="Find people" onClick={()=>setShowPeople(true)}><Plus size={21}/></button></div></header>
+      <header className="side-header"><div className="brand-lockup"><div className="brand-mark small">t</div><b>tuffchat</b></div><div className="side-actions"><button title="Create group" onClick={()=>setShowGroup(true)}><Users size={19}/></button><button title="Find people" onClick={()=>setShowPeople(true)}><Plus size={21}/></button></div></header>
       <div className="profile-strip"><Avatar profile={profile} /><div className="profile-meta"><b>{profile?.display_name || profile?.username}</b><span>@{profile?.username}</span></div><button title="Settings" onClick={openSettings}><Settings size={17}/></button></div>
       <div className="search-box"><Search size={17}/><input placeholder="Search or start a new chat" value={search} onChange={e=>searchPeople(e.target.value)} /><button onClick={()=>setShowPeople(true)} title="Find people"><Plus size={17}/></button></div>
-      {search.length >= 2 && <div className="search-results">{people.map(p=><button className="person-row" key={p.id} onClick={()=>{setActiveTab("chats");startDirect(p);}}><Avatar profile={p}/><span><b>{p.display_name || p.username}</b><small>@{p.username}</small></span><MessageCircle size={17}/></button>)}</div>}
-      <div className="sidebar-tabs"><button className={activeTab==="chats"?"active":""} onClick={()=>setActiveTab("chats")}><MessageCircle size={15}/> Chats</button><button className={activeTab==="servers"?"active":""} onClick={()=>setActiveTab("servers")}><Server size={15}/> Servers</button></div>
-      <div className="chat-list-label">{activeTab==="servers"?"YOUR SERVERS":"DIRECT MESSAGES"} <span>{sortedConversations.length}</span></div>
+      {search.length >= 2 && <div className="search-results">{people.map(p=><button className="person-row" key={p.id} onClick={()=>startDirect(p)}><Avatar profile={p}/><span><b>{p.display_name || p.username}</b><small>@{p.username}</small></span><MessageCircle size={17}/></button>)}</div>}
+      <div className="chat-list-label">DIRECT MESSAGES <span>{sortedConversations.length}</span></div>
       <div className="chat-list">{sortedConversations.map(c=>{const member = c.conversation_members?.find(m=>m.user_id!==session.user.id)?.profiles; const title = c.is_group ? c.name || "Group chat" : member?.display_name || member?.username || "Direct chat"; return <button key={c.id} className={`chat-row ${activeId===c.id?"selected":""}`} onClick={()=>{setActiveId(c.id);setMobileChat(true);}}><Avatar profile={member} label={title}/><span className="chat-row-copy"><b>{title}</b><small>{lastMessages[c.id]}</small></span><span className="chat-time">{new Date(c.created_at).toLocaleDateString([], {month:"short",day:"numeric"})}</span></button>;})}
-      {!sortedConversations.length && <div className="empty-list"><MessageCircle size={26}/><b>{activeTab==="servers"?"No servers yet":"No direct messages yet"}</b><span>{activeTab==="servers"?"Start a server for your crew.":"Find a friend and say hello."}</span><button onClick={()=>activeTab==="servers"?setShowGroup(true):setShowPeople(true)}>{activeTab==="servers"?"Create server":"Find people"}</button></div>}</div>
+      {!sortedConversations.length && <div className="empty-list"><MessageCircle size={26}/><b>No direct messages yet</b><span>Find a friend and say hello.</span><button onClick={()=>setShowPeople(true)}>Find people</button></div>}</div>
       <footer className="side-footer"><span className="online-dot"/> Your space is ready</footer>
     </aside>
     <section className={`chat-panel ${mobileChat ? "chat-panel-mobile" : ""}`}>
