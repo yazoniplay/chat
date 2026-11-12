@@ -194,3 +194,29 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent-light);o
 .theme-light .profile-about h3{color:#7558c7}
 .theme-light .profile-about p{color:#465761}
 @media(max-width:540px){.avatar-status{max-width:118px;font-size:10px;padding:4px 8px}.profile-about{margin:14px 16px 0}}
+
+/* Profile typography and selectable gradient themes */
+.profile-name-font-modern{font-family:Inter,ui-sans-serif,system-ui,sans-serif!important;font-weight:800!important;letter-spacing:-.025em}
+.profile-name-font-rounded{font-family:ui-rounded,"Arial Rounded MT Bold",system-ui,sans-serif!important;font-weight:800!important;letter-spacing:-.02em}
+.profile-name-font-serif{font-family:Georgia,"Times New Roman",serif!important;font-weight:700!important;letter-spacing:.01em}
+.profile-name-font-mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace!important;font-weight:700!important;letter-spacing:-.04em}
+.profile-gradient-aurora{background:linear-gradient(120deg,#352c50,#7558a8 52%,#d59ac0)}
+.profile-gradient-sunset{background:linear-gradient(120deg,#ff7e5f,#feb47b)}
+.profile-gradient-ocean{background:linear-gradient(120deg,#13547a,#80d0c7)}
+.profile-gradient-berry{background:linear-gradient(120deg,#7028e4,#e5b2ca)}
+.profile-gradient-emerald{background:linear-gradient(120deg,#134e5e,#71b280)}
+.profile-gradient-midnight{background:linear-gradient(120deg,#232526,#414345)}
+.profile-style-picker{display:grid;gap:11px;margin:10px 0 20px}
+.profile-style-picker>b{font-size:12px;color:var(--muted,#9baab1)}
+.font-options{display:flex;flex-wrap:wrap;gap:8px}
+.font-option{padding:9px 13px;border:1px solid var(--border,#34464f);border-radius:10px;background:var(--panel,#17252c);color:inherit;cursor:pointer}
+.font-option.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.gradient-options{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:9px}
+.gradient-option{height:42px;border:2px solid transparent;border-radius:10px;color:white;font-weight:900;cursor:pointer;box-shadow:inset 0 0 0 1px #ffffff30}
+.gradient-option.active{border-color:white;outline:2px solid var(--accent)}
+.profile-banner.profile-gradient-aurora,.banner-preview.profile-gradient-aurora{background:linear-gradient(120deg,#352c50,#7558a8 52%,#d59ac0)}
+.profile-banner.profile-gradient-sunset,.banner-preview.profile-gradient-sunset{background:linear-gradient(120deg,#ff7e5f,#feb47b)}
+.profile-banner.profile-gradient-ocean,.banner-preview.profile-gradient-ocean{background:linear-gradient(120deg,#13547a,#80d0c7)}
+.profile-banner.profile-gradient-berry,.banner-preview.profile-gradient-berry{background:linear-gradient(120deg,#7028e4,#e5b2ca)}
+.profile-banner.profile-gradient-emerald,.banner-preview.profile-gradient-emerald{background:linear-gradient(120deg,#134e5e,#71b280)}
+.profile-banner.profile-gradient-midnight,.banner-preview.profile-gradient-midnight{background:linear-gradient(120deg,#232526,#414345)}
