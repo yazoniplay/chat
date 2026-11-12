@@ -40,7 +40,12 @@ Deno.serve(async (req: Request) => {
   let message = "You have a new notification.";
   let tag = "tuffchat";
 
-  if (body.event === "ai_done") {
+  if (body.event === "test") {
+    recipientIds = [userId];
+    title = "Tuffchat notifications are working";
+    message = "You will receive message, mention and AI completion alerts here.";
+    tag = "tuffchat-push-test";
+  } else if (body.event === "ai_done") {
     recipientIds = [userId];
     title = "Tuffchat AI is ready";
     message = "Your AI reply has finished.";
@@ -70,14 +75,18 @@ Deno.serve(async (req: Request) => {
     .select("endpoint,subscription").in("user_id", recipientIds);
   if (subscriptionError) return reply({ error: "Couldn't load notification subscriptions." }, 500);
   let sent = 0;
+  let deliveryError = "";
   for (const row of subscriptions || []) {
     try {
       await webpush.sendNotification(row.subscription, JSON.stringify({ title, body: message, tag, url: "/chat/" }));
       sent += 1;
     } catch (error) {
       const statusCode = (error as { statusCode?: number })?.statusCode;
+      deliveryError = error instanceof Error ? error.message : "Push provider rejected the notification.";
       if (statusCode === 404 || statusCode === 410) await admin.from("push_subscriptions").delete().eq("endpoint", row.endpoint);
     }
   }
+  if (!sent && deliveryError) return reply({ sent: 0, error: deliveryError }, 502);
+  if (!sent) return reply({ sent: 0, error: "No registered push subscription exists for this account/device." });
   return reply({ sent });
 });
