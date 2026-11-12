@@ -644,3 +644,18 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent-light);o
 .sidebar-reopen:hover{background:color-mix(in srgb,var(--accent) 22%,#26343d);color:#fff}
 @keyframes sidebar-control-in{from{opacity:0;transform:translateX(-5px)}to{opacity:1;transform:translateX(0)}}
 @media(max-width:760px){.sidebar{flex-basis:auto}.sidebar-collapsed{display:none!important}.sidebar-reopen{display:none!important}}
+
+
+/* Language preferences in Appearance */
+.language-setting{display:flex;align-items:center;justify-content:space-between;gap:22px;padding:4px 0 2px}
+.language-setting-copy{display:flex;flex-direction:column;gap:6px;min-width:0}
+.language-setting-copy b{font-size:13px;color:var(--text,#edf2f4)}
+.language-setting-copy span{font-size:11px;color:var(--muted,#9baab1)}
+.language-setting-copy small{font-size:10px;color:var(--accent-light)}
+.language-select-label{display:flex;flex-direction:column;gap:7px;min-width:190px;color:var(--muted,#9baab1);font-size:10px;font-weight:700}
+.language-select-label select{width:100%;min-width:0;padding:11px 34px 11px 12px;border:1px solid var(--border,#3a4b54);border-radius:9px;background:var(--surface,#22323a);color:var(--text,#edf2f4);font:inherit;font-size:12px;outline:none}
+.language-select-label select:focus{border-color:var(--accent)}
+.google-translate-host{position:fixed;left:-10000px;top:-10000px;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none}
+.goog-te-banner-frame,.goog-te-balloon-frame{display:none!important}
+body{top:0!important}
+@media(max-width:560px){.language-setting{align-items:stretch;flex-direction:column;gap:14px}.language-select-label{min-width:0}}
