@@ -111,3 +111,5 @@ button:focus-visible,input:focus-visible{outline:2px solid #00c49c;outline-offse
 .theme-light .modal-bottom{border-color:#e4ebed;color:#71828a}
 @media(max-width:540px){.settings-modal{padding:20px 17px;max-height:92vh}.theme-choice{grid-template-columns:1fr}.settings-top h2{font-size:22px}.avatar-editor{gap:10px}.field-hint{width:100%;margin-left:73px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.01ms!important}}
+
+.theme-light .settings-divider{background:#e5ebed}
