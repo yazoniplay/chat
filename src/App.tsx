@@ -211,6 +211,9 @@ export default function App() {
       const subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: applicationServerKey as BufferSource });
       const { error } = await supabase.from("push_subscriptions").upsert({ user_id: session.user.id, endpoint: subscription.endpoint, subscription: subscription.toJSON() }, { onConflict: "endpoint" });
       if (error) throw error;
+      const { data: testResult, error: testError } = await supabase.functions.invoke("tuffchat-push", { body: { event: "test" } });
+      if (testError) throw new Error(testError.message || "Push test failed.");
+      if (!testResult?.sent) throw new Error(testResult?.error || "Subscription saved, but the test notification was not delivered. Check the VAPID secrets in Supabase.");
       setPushEnabled(true); setPushError("");
     } catch (error) { setPushError(error instanceof Error ? error.message : "Could not enable push notifications."); }
   }
