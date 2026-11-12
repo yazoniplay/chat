@@ -561,6 +561,7 @@ export default function App() {
       }
       setAiError(detail);
       setAiDraft(prompt);
+      setAiImageData(imageData);
     } else {
       const { data, error: loadError } = await supabase.from("personal_ai_messages")
         .select("id,role,content,created_at")
