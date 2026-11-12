@@ -52,6 +52,7 @@ export default function App() {
   const [sending, setSending] = useState(false);
   const [gifSearch, setGifSearch] = useState("");
   const [gifResults, setGifResults] = useState<{url:string; preview:string}[]>([]);
+  const [gifError, setGifError] = useState("");
   const [aiMode, setAiMode] = useState(false);
   const [aiMessages, setAiMessages] = useState<AiMessage[]>([]);
   const [aiDraft, setAiDraft] = useState("");
@@ -396,7 +397,15 @@ export default function App() {
     setAiError("");
     const { error } = await supabase.functions.invoke("tuffchat-ai", { body: { message: prompt } });
     if (error) {
-      setAiError(error.message || "Couldn't reach Tuffchat AI.");
+      let detail = error.message || "Couldn't reach Tuffchat AI.";
+      const response = (error as any).context;
+      if (response && typeof response.clone === "function") {
+        try {
+          const payload = await response.clone().json();
+          if (typeof payload?.error === "string" && payload.error.trim()) detail = payload.error;
+        } catch { /* Keep the SDK error when the response isn't JSON. */ }
+      }
+      setAiError(detail);
       setAiDraft(prompt);
     } else {
       const { data, error: loadError } = await supabase.from("personal_ai_messages")
@@ -411,17 +420,31 @@ export default function App() {
 
   async function searchGifs(value: string) {
     setGifSearch(value);
+    setGifError("");
     const key = import.meta.env.VITE_GIPHY_API_KEY as string | undefined;
-    if (!key || value.trim().length < 2) { setGifResults([]); return; }
+    if (!key) {
+      setGifResults([]);
+      setGifError("GIPHY isn't connected in this build. Check the GIPHY_API_KEY GitHub Actions secret, then rebuild.");
+      return;
+    }
+    if (value.trim().length < 2) { setGifResults([]); return; }
     try {
-      const params = new URLSearchParams({ api_key: key, q: value, limit: "12", rating: "pg-13", lang: "en" });
+      const params = new URLSearchParams({ api_key: key, q: value.trim().slice(0, 50), limit: "12", rating: "pg-13", lang: "en" });
       const res = await fetch(`https://api.giphy.com/v1/gifs/search?${params.toString()}`);
       const json = await res.json();
-      setGifResults((json.data || []).map((item: any) => ({
+      if (!res.ok || json?.meta?.status !== 200) {
+        throw new Error(json?.meta?.msg || `GIPHY returned HTTP ${res.status}. Check that your API key is valid.`);
+      }
+      const results = (json.data || []).map((item: any) => ({
         url: item.images?.original?.url || item.images?.fixed_width?.url,
         preview: item.images?.fixed_width_small?.url || item.images?.fixed_width?.url
-      })).filter((g: any) => g.url));
-    } catch { setGifResults([]); }
+      })).filter((g: any) => g.url);
+      setGifResults(results);
+      if (!results.length) setGifError("No GIFs found for that search. Try another word.");
+    } catch (error) {
+      setGifResults([]);
+      setGifError(error instanceof Error ? error.message : "Couldn't load GIFs from GIPHY.");
+    }
   }
 
   const sortedConversations = useMemo(() => conversations.filter(c => !c.is_group).sort((a, b) => Number(isSelfChat(b)) - Number(isSelfChat(a))), [conversations, session?.user.id]);
@@ -493,6 +516,6 @@ export default function App() {
     </section>
     {showPeople && <div className="modal-backdrop" onClick={()=>setShowPeople(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><div><h2>Find your people</h2><p>Search by their username.</p></div><button onClick={()=>setShowPeople(false)}><X/></button></div><div className="modal-search"><Search size={18}/><input autoFocus value={search} onChange={e=>searchPeople(e.target.value)} placeholder="Search usernames…"/></div>{people.map(p=><button className="person-row" key={p.id} onClick={()=>startDirect(p)}><Avatar profile={p}/><span><b className={`profile-name-font-${p.display_name_font || "modern"}`}>{p.display_name || p.username}</b><small>@{p.username}</small></span><MessageCircle size={18}/></button>)}{search.length<2 && <div className="modal-hint">Type at least 2 characters to search.</div>}{search.length>=2 && !people.length && <div className="modal-hint">No users found yet.</div>}</div></div>}
     {showGroup && <div className="modal-backdrop" onClick={()=>setShowGroup(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><div><h2>Make a group</h2><p>Bring the whole crew together.</p></div><button onClick={()=>setShowGroup(false)}><X/></button></div><label className="modal-label">Group name<input value={groupName} onChange={e=>setGroupName(e.target.value)} placeholder="The gang" /></label><div className="modal-search"><Search size={18}/><input value={groupSearch} onChange={e=>searchPeople(e.target.value,true)} placeholder="Add people by username…"/></div>{groupPeople.map(p=><button className="person-row" key={p.id} onClick={()=>setSelectedPeople(s=>s.includes(p.id)?s.filter(x=>x!==p.id):[...s,p.id])}><Avatar profile={p}/><span><b className={`profile-name-font-${p.display_name_font || "modern"}`}>{p.display_name || p.username}</b><small>@{p.username}</small></span><span className={`select-dot ${selectedPeople.includes(p.id) ? "checked" : ""}`}>{selectedPeople.includes(p.id)?"✓":"+"}</span></button>)}<div className="modal-bottom"><span>{selectedPeople.length} selected</span><button className="primary-btn" disabled={!groupName.trim() || !selectedPeople.length} onClick={createGroup}>Create group</button></div></div></div>}
-    {gifSearch.length>0 && <div className="gif-search-float"><div className="modal-head"><b>GIF search</b><button onClick={()=>{setGifSearch("");setGifResults([]);}}><X/></button></div><input autoFocus value={gifSearch.trimStart()} onChange={e=>searchGifs(e.target.value)} placeholder="Search GIFs…"/><div className="gif-grid">{gifResults.map(g=><button key={g.url} onClick={()=>{sendMessage(g.url,"gif");setGifSearch("");setGifResults([]);}}><img src={g.preview || g.url} alt="GIF"/></button>)}</div><div className="giphy-credit">Powered by GIPHY</div></div>}
+    {gifSearch.length>0 && <div className="gif-search-float"><div className="modal-head"><b>GIF search</b><button onClick={()=>{setGifSearch("");setGifResults([]);}}><X/></button></div><input autoFocus value={gifSearch.trimStart()} onChange={e=>searchGifs(e.target.value)} placeholder="Search GIFs…"/>{gifError && <div className="gif-error">{gifError}</div>}<div className="gif-grid">{gifResults.map(g=><button key={g.url} onClick={()=>{sendMessage(g.url,"gif");setGifSearch("");setGifResults([]);setGifError("");}}><img src={g.preview || g.url} alt="GIF"/></button>)}</div><div className="giphy-credit">Powered by GIPHY</div></div>}
     </main>;
 }
