@@ -105,7 +105,7 @@ export default function App() {
     const { data: memberships } = await supabase.from("conversation_members").select("conversation_id").eq("user_id", session.user.id);
     const ids = (memberships || []).map((m: {conversation_id:string}) => m.conversation_id);
     if (!ids.length) { setConversations([]); return; }
-    const { data } = await supabase.from("conversations").select("id,name,is_group,created_at,conversation_members(user_id,profiles(id,username,display_name,avatar_url,banner_url,status_message,about_me,display_name_font,profile_gradient))").in("id", ids).order("created_at", { ascending: false });
+    const { data } = await supabase.from("conversations").select("id,name,is_group,created_at,conversation_members(user_id,profiles(id,username,display_name,avatar_url,banner_url,status_message,about_me,display_name_font,profile_gradient,profile_gradient_custom))").in("id", ids).order("created_at", { ascending: false });
     setConversations((data || []) as unknown as Conversation[]);
   }
 
@@ -250,7 +250,7 @@ export default function App() {
   async function searchPeople(value: string, group = false) {
     if (group) setGroupSearch(value); else setSearch(value);
     if (value.trim().length < 2) { group ? setGroupPeople([]) : setPeople([]); return; }
-    const { data } = await supabase.from("profiles").select("id,username,display_name,avatar_url,banner_url,status_message,about_me,display_name_font,profile_gradient").ilike("username", `%${value.trim()}%`).neq("id", session?.user.id || "").limit(12);
+    const { data } = await supabase.from("profiles").select("id,username,display_name,avatar_url,banner_url,status_message,about_me,display_name_font,profile_gradient,profile_gradient_custom").ilike("username", `%${value.trim()}%`).neq("id", session?.user.id || "").limit(12);
     group ? setGroupPeople((data || []) as Profile[]) : setPeople((data || []) as Profile[]);
   }
 
