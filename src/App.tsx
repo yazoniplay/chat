@@ -176,11 +176,13 @@ export default function App() {
   async function requestAccountDeletion() {
     if (!session?.user) return;
     setDeletionBusy(true); setDeletionError("");
-    const { data: avatarFiles, error: listError } = await supabase.storage.from("avatars").list(session.user.id, { limit: 100 });
-    if (listError) { setDeletionError(`Could not prepare account files for deletion: ${listError.message}`); setDeletionBusy(false); return; }
-    if (avatarFiles?.length) {
+    for (let page = 0; page < 100; page += 1) {
+      const { data: avatarFiles, error: listError } = await supabase.storage.from("avatars").list(session.user.id, { limit: 100 });
+      if (listError) { setDeletionError(`Could not prepare account files for deletion: ${listError.message}`); setDeletionBusy(false); return; }
+      if (!avatarFiles?.length) break;
       const { error: removeError } = await supabase.storage.from("avatars").remove(avatarFiles.map(file => `${session.user.id}/${file.name}`));
       if (removeError) { setDeletionError(`Could not remove profile photos: ${removeError.message}`); setDeletionBusy(false); return; }
+      if (avatarFiles.length < 100) break;
     }
     const { data, error } = await supabase.rpc("request_account_deletion");
     if (error) setDeletionError(error.message);
