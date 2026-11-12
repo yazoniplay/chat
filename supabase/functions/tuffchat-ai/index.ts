@@ -40,15 +40,46 @@ Deno.serve(async (req: Request) => {
   let imageData: string | null = null;
   let dateContext = "";
   let timeZone = "UTC";
+  let requestMode = "";
+  let chessFen = "";
+  let legalMoves: string[] = [];
+  let recentMoves: string[] = [];
   try {
     const body = await req.json();
     prompt = typeof body.message === "string" ? body.message.trim() : "";
     imageData = typeof body.image_data === "string" ? body.image_data : null;
     dateContext = typeof body.date_context === "string" ? body.date_context.slice(0, 160) : "";
     timeZone = typeof body.time_zone === "string" ? body.time_zone.slice(0, 80) : "UTC";
+    requestMode = typeof body.mode === "string" ? body.mode : "";
+    chessFen = typeof body.fen === "string" ? body.fen.slice(0, 200) : "";
+    legalMoves = Array.isArray(body.legal_moves) ? body.legal_moves.filter((move: unknown): move is string => typeof move === "string" && /^[a-h][1-8][a-h][1-8][qrbn]?$/.test(move)).slice(0, 256) : [];
+    recentMoves = Array.isArray(body.recent_moves) ? body.recent_moves.filter((move: unknown): move is string => typeof move === "string").slice(-16) : [];
   } catch {
     return reply({ error: "Invalid request." }, 400);
   }
+  if (requestMode === "chess_move") {
+    if (!chessFen || !legalMoves.length) return reply({ error: "The chess position or legal moves are missing." }, 400);
+    try {
+      const upstream = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent", {
+        method: "POST",
+        headers: { "x-goog-api-key": geminiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: "You are Tuffchat's chess opponent. Choose exactly one move from the supplied legal UCI move list. Never invent a move. Prefer sensible chess strategy: develop pieces, control the center, protect your king, capture hanging pieces, and look for checks and tactics. Output only the exact UCI move, with no punctuation or explanation." }] },
+          contents: [{ role: "user", parts: [{ text: "Current FEN: " + chessFen + "\\nRecent moves (SAN): " + recentMoves.join(" ") + "\\nLegal UCI moves: " + legalMoves.join(" ") + "\\nChoose one legal move now." }] }],
+          generationConfig: { maxOutputTokens: 32, temperature: 0.2 },
+        }),
+      });
+      const result = await upstream.json();
+      if (!upstream.ok) return reply({ error: String(result?.error?.message || "Chess AI request failed.").slice(0, 400) }, 502);
+      const answer = (result?.candidates?.[0]?.content?.parts || []).map((part: { text?: string }) => part.text || "").join("").trim().toLowerCase();
+      const candidate = answer.match(/\\b[a-h][1-8][a-h][1-8][qrbn]?\\b/)?.[0];
+      if (!candidate || !legalMoves.includes(candidate)) return reply({ error: "Tuffchat AI returned an invalid chess move. Please try again." }, 502);
+      return reply({ move: candidate });
+    } catch {
+      return reply({ error: "Couldn't reach the chess AI. Please try again." }, 502);
+    }
+  }
+
   if ((!prompt && !imageData) || prompt.length > 6000) return reply({ error: "Write a message or attach an image (text up to 6,000 characters)." }, 400);
 
   let currentImage;
