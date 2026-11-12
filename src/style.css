@@ -565,3 +565,5 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent-light);o
  .chat-row,.group-rail-icon,.profile-open,.side-actions button,.chat-header-actions button,.send-btn{transition:none!important}
 }
 @media(max-width:700px){.ai-message-area{padding:18px 12px}.ai-message-bubble{max-width:90%}}
+
+.giphy-credit{padding:9px 12px 4px;text-align:right;color:#9baab1;font-size:10px;letter-spacing:.02em}
