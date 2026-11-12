@@ -174,7 +174,14 @@ export default function App() {
   }
 
   async function requestAccountDeletion() {
+    if (!session?.user) return;
     setDeletionBusy(true); setDeletionError("");
+    const { data: avatarFiles, error: listError } = await supabase.storage.from("avatars").list(session.user.id, { limit: 100 });
+    if (listError) { setDeletionError(`Could not prepare account files for deletion: ${listError.message}`); setDeletionBusy(false); return; }
+    if (avatarFiles?.length) {
+      const { error: removeError } = await supabase.storage.from("avatars").remove(avatarFiles.map(file => `${session.user.id}/${file.name}`));
+      if (removeError) { setDeletionError(`Could not remove profile photos: ${removeError.message}`); setDeletionBusy(false); return; }
+    }
     const { data, error } = await supabase.rpc("request_account_deletion");
     if (error) setDeletionError(error.message);
     else {
@@ -215,6 +222,7 @@ export default function App() {
 
   async function startDirect(person: Profile) {
     if (!session?.user) return;
+    setActiveTab("chats");
     const { data: mine } = await supabase.from("conversation_members").select("conversation_id").eq("user_id", session.user.id);
     const ids = (mine || []).map((m: {conversation_id:string}) => m.conversation_id);
     if (ids.length) {
