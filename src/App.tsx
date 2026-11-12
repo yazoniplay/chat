@@ -119,33 +119,24 @@ export default function App() {
 
   async function loadConversations() {
     if (!session?.user) return;
-    const { data: memberships } = await supabase.from("conversation_members").select("conversation_id").eq("user_id", session.user.id);
+    const { data: selfConversationId, error: selfChatError } = await supabase.rpc("ensure_self_conversation");
+    if (selfChatError || !selfConversationId) {
+      setAuthError(selfChatError?.message || "Couldn't create your personal chat.");
+    }
+    const { data: memberships, error: membershipError } = await supabase.from("conversation_members").select("conversation_id").eq("user_id", session.user.id);
+    if (membershipError) {
+      setAuthError(membershipError.message);
+      return;
+    }
     const ids = (memberships || []).map((m: {conversation_id:string}) => m.conversation_id);
     let rows: Conversation[] = [];
     if (ids.length) {
-      const { data } = await supabase.from("conversations").select("id,name,is_group,created_at,conversation_members(user_id,profiles(id,username,display_name,avatar_url,banner_url,status_message,about_me,display_name_font,profile_gradient,profile_gradient_custom,profile_effect,avatar_decoration))").in("id", ids).order("created_at", { ascending: false });
+      const { data, error } = await supabase.from("conversations").select("id,name,is_group,created_at,conversation_members(user_id,profiles(id,username,display_name,avatar_url,banner_url,status_message,about_me,display_name_font,profile_gradient,profile_gradient_custom,profile_effect,avatar_decoration))").in("id", ids).order("created_at", { ascending: false });
+      if (error) setAuthError(error.message);
       rows = (data || []) as unknown as Conversation[];
     }
-    const hasSelfChat = rows.some(c => !c.is_group && c.conversation_members?.length === 1 && c.conversation_members[0].user_id === session.user.id);
-    if (!hasSelfChat) {
-      const { data: selfConversation, error: createError } = await supabase.from("conversations").insert({ created_by: session.user.id, is_group: false }).select("id,name,is_group,created_at").single();
-      if (createError || !selfConversation) {
-        setAuthError(createError?.message || "Couldn't create your personal chat.");
-      } else {
-        const { error: memberError } = await supabase.from("conversation_members").insert({ conversation_id: selfConversation.id, user_id: session.user.id });
-        if (memberError) {
-          setAuthError(memberError.message);
-        } else {
-          let ownProfile = profile;
-          if (!ownProfile) {
-            const { data: ownData } = await supabase.from("profiles").select("id,username,display_name,avatar_url,banner_url,status_message,about_me,display_name_font,profile_gradient,profile_gradient_custom,profile_effect,avatar_decoration").eq("id", session.user.id).maybeSingle();
-            ownProfile = ownData as Profile | null;
-          }
-          rows.unshift({ ...selfConversation, conversation_members: [{ user_id: session.user.id, profiles: ownProfile }] } as Conversation);
-        }
-      }
-    }
     setConversations(rows);
+    if (!activeId && selfConversationId) setActiveId(String(selfConversationId));
   }
 
   useEffect(() => {
