@@ -13,7 +13,6 @@ const reply = (body: Record<string, unknown>, status = 200) =>
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return reply({ error: "Method not allowed." }, 405);
-
   const url = Deno.env.get("SUPABASE_URL");
   const anon = Deno.env.get("SUPABASE_ANON_KEY");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -32,7 +31,6 @@ Deno.serve(async (req: Request) => {
   });
   const { data: authData, error: authError } = await caller.auth.getUser(token);
   if (authError || !authData.user) return reply({ error: "Your session expired." }, 401);
-
   let body: { event?: string; conversation_id?: string; content?: string };
   try { body = await req.json(); } catch { return reply({ error: "Invalid request." }, 400); }
   const userId = authData.user.id;
@@ -48,15 +46,15 @@ Deno.serve(async (req: Request) => {
     message = "Your AI reply has finished.";
     tag = "tuffchat-ai";
   } else if (body.event === "message" && body.conversation_id) {
-    const { data: members, error: memberError } = await caller.from("conversation_members")
-      .select("user_id").eq("conversation_id", body.conversation_id);
+    const { data: members, error: memberError } = await caller.from("conversation_members").select("user_id").eq("conversation_id", body.conversation_id);
     if (memberError) return reply({ error: "Couldn't find conversation recipients." }, 403);
     const allRecipients = (members || []).map((row: { user_id: string }) => row.user_id).filter((id: string) => id !== userId);
     if (!allRecipients.length) return reply({ sent: 0 });
     const { data: profiles } = await caller.from("profiles").select("id,username,display_name").in("id", [userId, ...allRecipients]);
     const sender = (profiles || []).find((profile: {id:string}) => profile.id === userId);
+    const lowerContent = (body.content || "").toLowerCase();
     const mentioned = (profiles || []).filter((profile: {id:string;username:string}) =>
-      allRecipients.includes(profile.id) && new RegExp(`(^|\\s)@${profile.username.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}\\b`, "i").test(body.content || "")
+      allRecipients.includes(profile.id) && lowerContent.includes(`@${profile.username.toLowerCase()}`)
     ).map((profile: {id:string}) => profile.id);
     recipientIds = mentioned.length ? mentioned : allRecipients;
     const { data: conversation } = await caller.from("conversations").select("name,is_group").eq("id", body.conversation_id).maybeSingle();
@@ -71,19 +69,14 @@ Deno.serve(async (req: Request) => {
   const { data: subscriptions, error: subscriptionError } = await admin.from("push_subscriptions")
     .select("endpoint,subscription").in("user_id", recipientIds);
   if (subscriptionError) return reply({ error: "Couldn't load notification subscriptions." }, 500);
-
   let sent = 0;
   for (const row of subscriptions || []) {
     try {
-      await webpush.sendNotification(row.subscription, JSON.stringify({
-        title, body: message, tag, url: "/chat/",
-      }));
+      await webpush.sendNotification(row.subscription, JSON.stringify({ title, body: message, tag, url: "/chat/" }));
       sent += 1;
     } catch (error) {
       const statusCode = (error as { statusCode?: number })?.statusCode;
-      if (statusCode === 404 || statusCode === 410) {
-        await admin.from("push_subscriptions").delete().eq("endpoint", row.endpoint);
-      }
+      if (statusCode === 404 || statusCode === 410) await admin.from("push_subscriptions").delete().eq("endpoint", row.endpoint);
     }
   }
   return reply({ sent });
