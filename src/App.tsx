@@ -3,14 +3,14 @@ import { supabase, isConfigured } from "./lib/supabase";
 import type { Session } from "@supabase/supabase-js";
 import { Search, MessageCircle, Users, Plus, Send, Smile, LogOut, Settings, Phone, Video, MoreVertical, ArrowLeft, X, CheckCheck, Image as ImageIcon, UserRound, Palette, Sun, Moon, Camera, Save, ShieldCheck, Trash2 } from "lucide-react";
 
-type Profile = { id: string; username: string; display_name: string; avatar_url: string | null; deletion_requested_at?: string | null };
+type Profile = { id: string; username: string; display_name: string; avatar_url: string | null; banner_url?: string | null; status_message?: string | null; deletion_requested_at?: string | null };
 type Conversation = { id: string; name: string | null; is_group: boolean; created_at: string; conversation_members?: { user_id: string; profiles: Profile | null }[] };
 type Message = { id: string; conversation_id: string; sender_id: string; content: string; kind: string; created_at: string };
 const EMOJIS = ["😀","😂","🥹","😍","😎","🔥","❤️","💀","😭","👍","🙏","🎉","💯","👀","🤝","✨","🥶","😈"];
 
 function Avatar({ profile, label, size = "md" }: { profile?: Profile | null; label?: string; size?: "sm" | "md" | "lg" }) {
   const name = profile?.display_name || profile?.username || label || "?";
-  return <div className={`avatar avatar-${size}`} style={profile?.avatar_url ? { backgroundImage: `url(${profile.avatar_url})` } : undefined}>{!profile?.avatar_url && name.slice(0,1).toUpperCase()}</div>;
+  return <div className={`avatar avatar-${size}`} style={profile?.avatar_url ? { backgroundImage: `url(${profile.avatar_url})` } : undefined}>{!profile?.avatar_url && name.slice(0,1).toUpperCase()}{profile?.status_message && <span className="avatar-status" title={profile.status_message}>{profile.status_message}</span>}</div>;
 }
 
 export default function App() {
@@ -47,13 +47,18 @@ export default function App() {
   const [editUsername, setEditUsername] = useState("");
   const [editDisplayName, setEditDisplayName] = useState("");
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [bannerFile, setBannerFile] = useState<File | null>(null);
+  const [editStatusMessage, setEditStatusMessage] = useState("");
+  const [viewedProfile, setViewedProfile] = useState<Profile | null>(null);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileSaveError, setProfileSaveError] = useState("");
   const [theme, setTheme] = useState<"dark" | "light">(() => (localStorage.getItem("tuffchat-theme") as "dark" | "light") || "dark");
   const accentOptions = [{ id: "lavender", name: "Lavender", color: "#9b7bfa" }, { id: "ocean", name: "Ocean", color: "#38a9e8" }, { id: "rose", name: "Rose", color: "#ef789b" }, { id: "mint", name: "Mint", color: "#45c6a1" }, { id: "sunset", name: "Sunset", color: "#f29a55" }] as const;
   const [accent, setAccent] = useState(() => localStorage.getItem("tuffchat-accent") || "lavender");
   const avatarPreview = useMemo(() => avatarFile ? URL.createObjectURL(avatarFile) : null, [avatarFile]);
+  const bannerPreview = useMemo(() => bannerFile ? URL.createObjectURL(bannerFile) : null, [bannerFile]);
   useEffect(() => () => { if (avatarPreview) URL.revokeObjectURL(avatarPreview); }, [avatarPreview]);
+  useEffect(() => () => { if (bannerPreview) URL.revokeObjectURL(bannerPreview); }, [bannerPreview]);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -90,7 +95,7 @@ export default function App() {
     const { data: memberships } = await supabase.from("conversation_members").select("conversation_id").eq("user_id", session.user.id);
     const ids = (memberships || []).map((m: {conversation_id:string}) => m.conversation_id);
     if (!ids.length) { setConversations([]); return; }
-    const { data } = await supabase.from("conversations").select("id,name,is_group,created_at,conversation_members(user_id,profiles(id,username,display_name,avatar_url))").in("id", ids).order("created_at", { ascending: false });
+    const { data } = await supabase.from("conversations").select("id,name,is_group,created_at,conversation_members(user_id,profiles(id,username,display_name,avatar_url,banner_url,status_message))").in("id", ids).order("created_at", { ascending: false });
     setConversations((data || []) as unknown as Conversation[]);
   }
 
@@ -118,6 +123,8 @@ export default function App() {
     setEditUsername(profile?.username || "");
     setEditDisplayName(profile?.display_name || "");
     setAvatarFile(null);
+    setBannerFile(null);
+    setEditStatusMessage(profile?.status_message || "");
     setProfileSaveError("");
     setSettingsOpen(true);
   }
@@ -136,10 +143,13 @@ export default function App() {
       return;
     }
     if (avatarFile && avatarFile.size > 5 * 1024 * 1024) { setProfileSaveError("Photo must be 5 MB or smaller."); return; }
+    if (bannerFile && bannerFile.size > 8 * 1024 * 1024) { setProfileSaveError("Banner must be 8 MB or smaller."); return; }
+    if (editStatusMessage.length > 60) { setProfileSaveError("Status messages can be up to 60 characters."); return; }
     setProfileSaving(true);
     setProfileSaveError("");
     let avatarUrl = profile.avatar_url;
-    if (avatarFile) {
+    let bannerUrl = profile.banner_url || null;
+    if (avatarFile || bannerFile) {
       const { data: authData, error: authError } = await supabase.auth.getSession();
       const uploadUser = authData.session?.user;
       if (authError || !uploadUser || uploadUser.id !== session.user.id) {
@@ -147,35 +157,27 @@ export default function App() {
         setProfileSaving(false);
         return;
       }
-      const extensionByType: Record<string, string> = {
-        "image/jpeg": "jpg",
-        "image/png": "png",
-        "image/webp": "webp",
-        "image/gif": "gif",
+      const uploadImage = async (file: File, prefix: string) => {
+        const types: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif" };
+        const extension = types[file.type];
+        if (!extension) throw new Error("Please choose a JPG, PNG, WEBP or GIF image.");
+        const path = `${uploadUser.id}/${prefix}-${Date.now()}.${extension}`;
+        const { error: uploadError } = await supabase.storage.from("avatars").upload(path, file, { upsert: false, contentType: file.type, cacheControl: "3600" });
+        if (uploadError) throw uploadError;
+        return supabase.storage.from("avatars").getPublicUrl(path).data.publicUrl;
       };
-      const extension = extensionByType[avatarFile.type];
-      if (!extension) {
-        setProfileSaveError("Please choose a JPG, PNG, WEBP or GIF image.");
+      try {
+        if (avatarFile) avatarUrl = await uploadImage(avatarFile, "avatar");
+        if (bannerFile) bannerUrl = await uploadImage(bannerFile, "banner");
+      } catch (uploadError) {
+        setProfileSaveError(`Image upload failed: ${uploadError instanceof Error ? uploadError.message : "Please try again."}`);
         setProfileSaving(false);
         return;
       }
-      // Storage paths are relative to the avatars bucket; the first folder must be the signed-in user's ID.
-      const path = `${uploadUser.id}/avatar-${Date.now()}.${extension}`;
-      const { error: uploadError } = await supabase.storage.from("avatars").upload(path, avatarFile, {
-        upsert: false,
-        contentType: avatarFile.type,
-        cacheControl: "3600",
-      });
-      if (uploadError) {
-        setProfileSaveError(`Photo upload failed: ${uploadError.message}`);
-        setProfileSaving(false);
-        return;
-      }
-      avatarUrl = supabase.storage.from("avatars").getPublicUrl(path).data.publicUrl;
     }
-    const { data, error } = await supabase.from("profiles").update({ username: cleanUsername, display_name: cleanDisplayName, avatar_url: avatarUrl }).eq("id", session.user.id).select("id,username,display_name,avatar_url").single();
+    const { data, error } = await supabase.from("profiles").update({ username: cleanUsername, display_name: cleanDisplayName, avatar_url: avatarUrl, banner_url: bannerUrl, status_message: editStatusMessage.trim() || null }).eq("id", session.user.id).select("id,username,display_name,avatar_url,banner_url,status_message").single();
     if (error) setProfileSaveError(error.code === "23505" ? "That username is already taken. Try another one." : error.message);
-    else { setProfile(data as Profile); setSettingsOpen(false); setAvatarFile(null); }
+    else { setProfile(data as Profile); setSettingsOpen(false); setAvatarFile(null); setBannerFile(null); }
     setProfileSaving(false);
   }
 
@@ -227,7 +229,7 @@ export default function App() {
   async function searchPeople(value: string, group = false) {
     if (group) setGroupSearch(value); else setSearch(value);
     if (value.trim().length < 2) { group ? setGroupPeople([]) : setPeople([]); return; }
-    const { data } = await supabase.from("profiles").select("id,username,display_name,avatar_url").ilike("username", `%${value.trim()}%`).neq("id", session?.user.id || "").limit(12);
+    const { data } = await supabase.from("profiles").select("id,username,display_name,avatar_url,banner_url,status_message").ilike("username", `%${value.trim()}%`).neq("id", session?.user.id || "").limit(12);
     group ? setGroupPeople((data || []) as Profile[]) : setPeople((data || []) as Profile[]);
   }
 
@@ -288,7 +290,14 @@ export default function App() {
   if (!session) return <div className="auth-screen"><div className="auth-art"><div className="brand-mark">t</div><div><span className="eyebrow">YOUR PEOPLE. YOUR PLACE.</span><h1>Good chats.<br/><em>Better days.</em></h1><p>Bring your favourite people together, wherever life takes you.</p></div><div className="art-bubbles"><span>hey 👋</span><span>you coming? 🔥</span><span>always 😂</span></div></div><form className="auth-card" onSubmit={authenticate}><div className="auth-brand"><div className="brand-mark">t</div><b>Tuffchat</b></div><h2>{authMode === "login" ? "Welcome back" : "Make it official"}</h2><p className="muted">{authMode === "login" ? "Sign in to catch up with your people." : "Create an account and claim your username."}</p>{authMode === "signup" && <><label>Username<input value={username} onChange={e=>setUsername(e.target.value)} placeholder="your_username" required /></label><label>Display name<input value={displayName} onChange={e=>setDisplayName(e.target.value)} placeholder="What should people call you?" /></label></>}<label>Email<input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com" required /></label><label>Password<input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="At least 6 characters" minLength={6} required /></label>{authError && <div className="auth-message">{authError}</div>}<button className="primary-btn full" type="submit">{authMode === "login" ? "Sign in" : "Create account"}</button><p className="switch-auth">{authMode === "login" ? "New around here?" : "Already have an account?"} <button type="button" onClick={()=>{setAuthMode(authMode==="login"?"signup":"login");setAuthError("");}}>{authMode === "login" ? "Create account" : "Sign in"}</button></p></form></div>;
 
   return <main className={`app-shell theme-${theme}`}>
-    {settingsOpen && <div className="modal-backdrop settings-backdrop" onClick={()=>setSettingsOpen(false)}><form className="settings-modal" onSubmit={saveProfile} onClick={e=>e.stopPropagation()}><div className="settings-top"><div><span className="settings-kicker">YOUR ACCOUNT</span><h2>Settings</h2><p>Make Tuffchat feel like yours.</p></div><button type="button" className="icon-close" onClick={()=>setSettingsOpen(false)} aria-label="Close settings"><X size={20}/></button></div><div className="settings-section-title"><UserRound size={16}/> Profile</div><div className="avatar-editor"><div className="avatar-preview">{avatarPreview ? <img src={avatarPreview} alt="Profile preview"/> : <Avatar profile={profile} size="lg"/>}</div><label className="upload-avatar"><Camera size={15}/> Change photo<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={e=>setAvatarFile(e.target.files?.[0] || null)}/></label><span className="field-hint">JPG, PNG, WEBP or GIF. Max 5 MB.</span></div><label className="settings-field"><span>Username</span><div className="username-input"><span>@</span><input value={editUsername} onChange={e=>setEditUsername(e.target.value)} maxLength={20} autoComplete="username" /></div><small>3–20 characters · letters, numbers and _</small></label><label className="settings-field"><span>Display name</span><input value={editDisplayName} onChange={e=>setEditDisplayName(e.target.value)} maxLength={40} placeholder="Your name" /></label><div className="settings-divider"/><div className="settings-section-title"><Palette size={16}/> Appearance</div><div className="theme-choice"><button type="button" className={theme==="light"?"theme-option active":"theme-option"} onClick={()=>setTheme("light")}><Sun size={19}/><span><b>Light mode</b><small>Bright and clean</small></span>{theme==="light" && <CheckCheck size={17}/>}</button><button type="button" className={theme==="dark"?"theme-option active":"theme-option"} onClick={()=>setTheme("dark")}><Moon size={19}/><span><b>Dark mode</b><small>Easy on the eyes</small></span>{theme==="dark" && <CheckCheck size={17}/>}</button></div><div className="accent-picker"><div className="accent-picker-heading"><b>Theme color</b><span>Choose your Tuffchat accent</span></div><div className="accent-swatches">{accentOptions.map(option => <button key={option.id} type="button" className={`accent-swatch ${accent === option.id ? "active" : ""}`} style={{ "--swatch": option.color } as React.CSSProperties} onClick={() => setAccent(option.id)} aria-label={`${option.name} theme color`} aria-pressed={accent === option.id}><span/>{accent === option.id && <CheckCheck size={15}/>}<small>{option.name}</small></button>)}</div></div><div className="settings-footnote"><ShieldCheck size={15}/> Your profile changes are saved to your Tuffchat account.</div><div className="account-danger-zone"><div><b>Delete account</b><p>Your account is deactivated immediately. You have 30 days to restore it before permanent deletion.</p></div>{!deleteConfirm ? <button type="button" className="danger-btn" onClick={()=>{setDeleteConfirm(true);setDeletionError("");}}><Trash2 size={15}/> Delete account</button> : <div className="delete-confirm"><span>Are you sure? You’ll be signed out of chats and your 30-day countdown will start.</span><button type="button" className="cancel-btn" onClick={()=>setDeleteConfirm(false)}>Keep account</button><button type="button" className="danger-btn" disabled={deletionBusy} onClick={requestAccountDeletion}>{deletionBusy ? "Deactivating…" : "Yes, deactivate"}</button></div>}</div>{deletionError && <div className="settings-error">{deletionError}</div>}{profileSaveError && <div className="settings-error">{profileSaveError}</div>}<div className="settings-actions"><button type="button" className="signout-btn" onClick={async()=>{await supabase.auth.signOut();setSettingsOpen(false);}}><LogOut size={16}/> Sign out</button><button type="button" className="cancel-btn" onClick={()=>setSettingsOpen(false)}>Cancel</button><button className="primary-btn" type="submit" disabled={profileSaving}><Save size={16}/>{profileSaving?"Saving…":"Save changes"}</button></div></form></div>}
+    {viewedProfile && <div className="modal-backdrop profile-backdrop" onClick={()=>setViewedProfile(null)}><section className="profile-card" onClick={e=>e.stopPropagation()}>
+      <button className="profile-close" onClick={()=>setViewedProfile(null)} aria-label="Close profile"><X size={19}/></button>
+      <div className="profile-banner" style={viewedProfile.banner_url ? {backgroundImage:`url(${viewedProfile.banner_url})`} : undefined}/>
+      <div className="profile-card-main"><Avatar profile={viewedProfile} size="lg"/><div className="profile-card-identity"><h2>{viewedProfile.display_name || viewedProfile.username}</h2><span>@{viewedProfile.username}</span></div></div>
+      {viewedProfile.status_message && <div className="profile-status-full">“{viewedProfile.status_message}”</div>}
+      <div className="profile-card-footer">{viewedProfile.id===session.user.id ? <button className="primary-btn" onClick={()=>{setViewedProfile(null);openSettings();}}><Settings size={16}/> Edit profile</button> : <button className="primary-btn" onClick={()=>{startDirect(viewedProfile);setViewedProfile(null);}}><MessageCircle size={16}/> Message</button>}</div>
+    </section></div>}
+    {settingsOpen && <div className="modal-backdrop settings-backdrop" onClick={()=>setSettingsOpen(false)}><form className="settings-modal" onSubmit={saveProfile} onClick={e=>e.stopPropagation()}><div className="settings-top"><div><span className="settings-kicker">YOUR ACCOUNT</span><h2>Settings</h2><p>Make Tuffchat feel like yours.</p></div><button type="button" className="icon-close" onClick={()=>setSettingsOpen(false)} aria-label="Close settings"><X size={20}/></button></div><div className="settings-section-title"><UserRound size={16}/> Profile</div><div className="avatar-editor"><div className="avatar-preview">{avatarPreview ? <img src={avatarPreview} alt="Profile preview"/> : <Avatar profile={profile} size="lg"/>}</div><label className="upload-avatar"><Camera size={15}/> Change photo<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={e=>setAvatarFile(e.target.files?.[0] || null)}/></label><span className="field-hint">JPG, PNG, WEBP or GIF. Max 5 MB.</span></div><label className="settings-field"><span>Username</span><div className="username-input"><span>@</span><input value={editUsername} onChange={e=>setEditUsername(e.target.value)} maxLength={20} autoComplete="username" /></div><small>3–20 characters · letters, numbers and _</small></label><label className="settings-field"><span>Display name</span><input value={editDisplayName} onChange={e=>setEditDisplayName(e.target.value)} maxLength={40} placeholder="Your name" /></label><label className="settings-field"><span>Status message</span><input value={editStatusMessage} onChange={e=>setEditStatusMessage(e.target.value)} maxLength={60} placeholder="What are you up to?" /><small>Shown in a bubble on your profile picture · 60 characters max</small></label><div className="banner-editor"><div className="banner-preview" style={bannerPreview ? {backgroundImage:`url(${bannerPreview})`} : profile?.banner_url ? {backgroundImage:`url(${profile.banner_url})`} : undefined}><span>PROFILE BANNER</span></div><label className="upload-avatar"><ImageIcon size={15}/> Upload banner<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={e=>setBannerFile(e.target.files?.[0] || null)}/></label><span className="field-hint">Wide image · JPG, PNG, WEBP or GIF · Max 8 MB</span></div><div className="settings-divider"/><div className="settings-divider"/><div className="settings-section-title"><Palette size={16}/> App appearance</div><div className="theme-choice"><button type="button" className={theme==="light"?"theme-option active":"theme-option"} onClick={()=>setTheme("light")}><Sun size={19}/><span><b>Light mode</b><small>Bright and clean</small></span>{theme==="light" && <CheckCheck size={17}/>}</button><button type="button" className={theme==="dark"?"theme-option active":"theme-option"} onClick={()=>setTheme("dark")}><Moon size={19}/><span><b>Dark mode</b><small>Easy on the eyes</small></span>{theme==="dark" && <CheckCheck size={17}/>}</button></div><div className="accent-picker"><div className="accent-picker-heading"><b>Theme color</b><span>Choose your Tuffchat accent</span></div><div className="accent-swatches">{accentOptions.map(option => <button key={option.id} type="button" className={`accent-swatch ${accent === option.id ? "active" : ""}`} style={{ "--swatch": option.color } as React.CSSProperties} onClick={() => setAccent(option.id)} aria-label={`${option.name} theme color`} aria-pressed={accent === option.id}><span/>{accent === option.id && <CheckCheck size={15}/>}<small>{option.name}</small></button>)}</div></div><div className="settings-footnote"><ShieldCheck size={15}/> Your profile changes are saved to your Tuffchat account.</div><div className="account-danger-zone"><div><b>Delete account</b><p>Your account is deactivated immediately. You have 30 days to restore it before permanent deletion.</p></div>{!deleteConfirm ? <button type="button" className="danger-btn" onClick={()=>{setDeleteConfirm(true);setDeletionError("");}}><Trash2 size={15}/> Delete account</button> : <div className="delete-confirm"><span>Are you sure? You’ll be signed out of chats and your 30-day countdown will start.</span><button type="button" className="cancel-btn" onClick={()=>setDeleteConfirm(false)}>Keep account</button><button type="button" className="danger-btn" disabled={deletionBusy} onClick={requestAccountDeletion}>{deletionBusy ? "Deactivating…" : "Yes, deactivate"}</button></div>}</div>{deletionError && <div className="settings-error">{deletionError}</div>}{profileSaveError && <div className="settings-error">{profileSaveError}</div>}<div className="settings-actions"><button type="button" className="signout-btn" onClick={async()=>{await supabase.auth.signOut();setSettingsOpen(false);}}><LogOut size={16}/> Sign out</button><button type="button" className="cancel-btn" onClick={()=>setSettingsOpen(false)}>Cancel</button><button className="primary-btn" type="submit" disabled={profileSaving}><Save size={16}/>{profileSaving?"Saving…":"Save changes"}</button></div></form></div>}
     <nav className={`group-rail ${mobileChat ? "group-rail-hidden" : ""}`} aria-label="Tuffchat navigation">
       <button className={`rail-home ${!active || !active.is_group ? "rail-selected" : ""}`} title="Chats" aria-label="Chats" onClick={()=>{setActiveId("");setMobileChat(false);}}>
         <MessageCircle size={22}/>
@@ -304,16 +313,16 @@ export default function App() {
     </nav>
     <aside className={`sidebar ${mobileChat ? "sidebar-hidden" : ""}`}>
       <header className="side-header"><div className="brand-lockup"><div className="brand-mark small">t</div><b>tuffchat</b></div><div className="side-actions"><button title="Create group" onClick={()=>setShowGroup(true)}><Users size={19}/></button><button title="Find people" onClick={()=>setShowPeople(true)}><Plus size={21}/></button></div></header>
-      <div className="profile-strip"><Avatar profile={profile} /><div className="profile-meta"><b>{profile?.display_name || profile?.username}</b><span>@{profile?.username}</span></div><button title="Settings" onClick={openSettings}><Settings size={17}/></button></div>
+      <div className="profile-strip"><button className="profile-open" onClick={()=>setViewedProfile(profile)} aria-label="View your profile"><Avatar profile={profile}/><span className="profile-meta"><b>{profile?.display_name || profile?.username}</b><span>@{profile?.username}</span></span></button><button title="Settings" onClick={openSettings}><Settings size={17}/></button></div>
       <div className="search-box"><Search size={17}/><input placeholder="Search or start a new chat" value={search} onChange={e=>searchPeople(e.target.value)} /><button onClick={()=>setShowPeople(true)} title="Find people"><Plus size={17}/></button></div>
       {search.length >= 2 && <div className="search-results">{people.map(p=><button className="person-row" key={p.id} onClick={()=>startDirect(p)}><Avatar profile={p}/><span><b>{p.display_name || p.username}</b><small>@{p.username}</small></span><MessageCircle size={17}/></button>)}</div>}
       <div className="chat-list-label">DIRECT MESSAGES <span>{sortedConversations.length}</span></div>
-      <div className="chat-list">{sortedConversations.map(c=>{const member = c.conversation_members?.find(m=>m.user_id!==session.user.id)?.profiles; const title = c.is_group ? c.name || "Group chat" : member?.display_name || member?.username || "Direct chat"; return <button key={c.id} className={`chat-row ${activeId===c.id?"selected":""}`} onClick={()=>{setActiveId(c.id);setMobileChat(true);}}><Avatar profile={member} label={title}/><span className="chat-row-copy"><b>{title}</b><small>{lastMessages[c.id]}</small></span><span className="chat-time">{new Date(c.created_at).toLocaleDateString([], {month:"short",day:"numeric"})}</span></button>;})}
+      <div className="chat-list">{sortedConversations.map(c=>{const member = c.conversation_members?.find(m=>m.user_id!==session.user.id)?.profiles; const title = c.is_group ? c.name || "Group chat" : member?.display_name || member?.username || "Direct chat"; return <button key={c.id} className={`chat-row ${activeId===c.id?"selected":""}`} onClick={()=>{setActiveId(c.id);setMobileChat(true);}}><button className="avatar-open" onClick={e=>{e.stopPropagation();if(member)setViewedProfile(member);}} aria-label={`View ${title} profile`}><Avatar profile={member} label={title}/></button><span className="chat-row-copy"><b>{title}</b><small>{lastMessages[c.id]}</small></span><span className="chat-time">{new Date(c.created_at).toLocaleDateString([], {month:"short",day:"numeric"})}</span></button>;})}
       {!sortedConversations.length && <div className="empty-list"><MessageCircle size={26}/><b>No direct messages yet</b><span>Find a friend and say hello.</span><button onClick={()=>setShowPeople(true)}>Find people</button></div>}</div>
       <footer className="side-footer"><span className="online-dot"/> Your space is ready</footer>
     </aside>
     <section className={`chat-panel ${mobileChat ? "chat-panel-mobile" : ""}`}>
-      {active ? <><header className="chat-header"><button className="mobile-back" onClick={()=>setMobileChat(false)}><ArrowLeft/></button><Avatar profile={otherMember} label={activeTitle}/><div className="chat-heading"><b>{activeTitle}</b><span>{active.is_group ? `${activeMembers.length} members` : "Direct message"}</span></div><div className="chat-header-actions"><button title="Voice call"><Phone size={18}/></button><button title="Video call"><Video size={19}/></button><button title="More"><MoreVertical size={19}/></button></div></header>
+      {active ? <><header className="chat-header"><button className="mobile-back" onClick={()=>setMobileChat(false)}><ArrowLeft/></button><button className="avatar-open" onClick={()=>{if(otherMember)setViewedProfile(otherMember);}} aria-label={`View ${activeTitle} profile`}><Avatar profile={otherMember} label={activeTitle}/></button><div className="chat-heading"><b>{activeTitle}</b><span>{active.is_group ? `${activeMembers.length} members` : "Direct message"}</span></div><div className="chat-header-actions"><button title="Voice call"><Phone size={18}/></button><button title="Video call"><Video size={19}/></button><button title="More"><MoreVertical size={19}/></button></div></header>
       <div className="message-area"><div className="date-chip">TODAY</div>{messages.map(m=>{const mine=m.sender_id===session.user.id; const sender=activeMembers.find(x=>x.user_id===m.sender_id)?.profiles; return <div key={m.id} className={`message-line ${mine?"mine":""}`}>{!mine && active.is_group && <Avatar profile={sender} size="sm"/>}<div className="message-bubble">{!mine && active.is_group && <b className="sender-name">{sender?.display_name || sender?.username || "Member"}</b>}{m.kind==="gif" ? <img className="gif-message" src={m.content} alt="GIF"/> : <span>{m.content}</span>}<small>{new Date(m.created_at).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})} {mine && <CheckCheck size={14}/>}</small></div></div>;})}<div ref={bottomRef}/>{!messages.length && <div className="first-message"><div>👋</div><b>This is the start of something good.</b><span>Send a message to kick things off.</span></div>}</div>
       {emojiOpen && <div className="emoji-tray">{EMOJIS.map(e=><button key={e} onClick={()=>setDraft(d=>d+e)}>{e}</button>)}</div>}
       <form className="composer" onSubmit={e=>{e.preventDefault();sendMessage();}}><button type="button" title="GIFs" onClick={()=>setGifSearch(" ")}><ImageIcon size={21}/></button><button type="button" title="Emoji" onClick={()=>setEmojiOpen(!emojiOpen)}><Smile size={22}/></button><input value={draft} onChange={e=>setDraft(e.target.value)} placeholder="Type a message…" /><button type="submit" className="send-btn" disabled={!draft.trim() || sending}><Send size={19}/></button></form>
