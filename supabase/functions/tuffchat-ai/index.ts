@@ -104,6 +104,13 @@ Deno.serve(async (req: Request) => {
       .insert({ user_id: userId, role: "assistant", content: answerText })
       .select("id,role,content,image_data,created_at").single();
     if (saveAssistantError) return reply({ error: "The reply arrived but couldn't be saved." }, 500);
+    try {
+      await fetch(supabaseUrl + "/functions/v1/tuffchat-push", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token, apikey: anonKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ event: "ai_done" }),
+      });
+    } catch { /* Keep the AI answer successful if push delivery is temporarily unavailable. */ }
     return reply({ message: saved });
   } catch (error) {
     return reply({ error: error instanceof Error ? error.message : "Couldn't reach Gemini. Please try again." }, 502);
