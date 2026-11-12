@@ -435,7 +435,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent-light);o
 .profile-effect-shimmer:before{background-image:url("/chat/profile-effects/holographic.svg")}
 .profile-effect-aurora:before{background-image:url("/chat/profile-effects/aurora.svg")}
 .profile-effect-sparkle:before{background-image:url("/chat/profile-effects/stardust.svg")}
-.profile-card>*{position:relative;z-index:2}
+.profile-card>*:not(.profile-close){position:relative;z-index:2}
 .profile-card .profile-close{z-index:4}
 .profile-card-main .avatar{overflow:visible}
 .profile-badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
