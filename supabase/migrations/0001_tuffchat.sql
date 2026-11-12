@@ -117,10 +117,7 @@ for select to authenticated using (public.is_conversation_member(conversation_id
 drop policy if exists "Creator or self can join conversation" on public.conversation_members;
 create policy "Creator or self can join conversation" on public.conversation_members
 for insert to authenticated
-with check (
-  user_id = (select auth.uid())
-  or public.can_add_conversation_member(conversation_id)
-);
+with check (public.can_add_conversation_member(conversation_id));
 
 drop policy if exists "Members can read messages" on public.messages;
 create policy "Members can read messages" on public.messages
