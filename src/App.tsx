@@ -130,9 +130,32 @@ export default function App() {
     setProfileSaveError("");
     let avatarUrl = profile.avatar_url;
     if (avatarFile) {
-      const extension = avatarFile.name.split(".").pop()?.toLowerCase() || "jpg";
-      const path = `${session.user.id}/${Date.now()}.${extension}`;
-      const { error: uploadError } = await supabase.storage.from("avatars").upload(path, avatarFile, { upsert: true, contentType: avatarFile.type });
+      const { data: authData, error: authError } = await supabase.auth.getSession();
+      const uploadUser = authData.session?.user;
+      if (authError || !uploadUser || uploadUser.id !== session.user.id) {
+        setProfileSaveError("Your login session expired. Sign out and sign back in, then try again.");
+        setProfileSaving(false);
+        return;
+      }
+      const extensionByType: Record<string, string> = {
+        "image/jpeg": "jpg",
+        "image/png": "png",
+        "image/webp": "webp",
+        "image/gif": "gif",
+      };
+      const extension = extensionByType[avatarFile.type];
+      if (!extension) {
+        setProfileSaveError("Please choose a JPG, PNG, WEBP or GIF image.");
+        setProfileSaving(false);
+        return;
+      }
+      // Storage paths are relative to the avatars bucket; the first folder must be the signed-in user's ID.
+      const path = `${uploadUser.id}/avatar-${Date.now()}.${extension}`;
+      const { error: uploadError } = await supabase.storage.from("avatars").upload(path, avatarFile, {
+        upsert: false,
+        contentType: avatarFile.type,
+        cacheControl: "3600",
+      });
       if (uploadError) {
         setProfileSaveError(`Photo upload failed: ${uploadError.message}`);
         setProfileSaving(false);
