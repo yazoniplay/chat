@@ -627,7 +627,7 @@ export default function App() {
 
     const dateContext = new Intl.DateTimeFormat(undefined, { dateStyle: "full", timeStyle: "long" }).format(new Date());
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-    const { error } = await supabase.functions.invoke("tuffchat-ai", {
+    const { data: aiResponse, error } = await supabase.functions.invoke("tuffchat-ai", {
       body: { message: prompt, image_data: imageData, date_context: dateContext, time_zone: timeZone }
     });
 
@@ -651,19 +651,32 @@ export default function App() {
       .order("created_at", { ascending: true }).limit(100);
 
     if (requestId === aiHistoryRequestRef.current) {
+      const savedAssistant = !requestError && aiResponse?.message
+        ? aiResponse.message as AiMessage
+        : null;
       if (!loadError && data) {
-        const history = data as AiMessage[];
-        // Keep the optimistic user bubble if the database read is briefly stale.
+        let history = data as AiMessage[];
+        // The function's response is authoritative. A history read can briefly
+        // lag behind the successful insert, so merge its returned assistant row.
+        if (savedAssistant && !history.some(message => message.id === savedAssistant.id)) {
+          history = [...history, savedAssistant];
+        }
         const alreadySaved = history.some(message =>
           message.role === "user" &&
           message.content === optimisticMessage.content &&
           Math.abs(new Date(message.created_at).getTime() - new Date(optimisticMessage.created_at).getTime()) < 60_000
         );
-        setAiMessages(alreadySaved ? history : [...history, optimisticMessage]);
+        if (!alreadySaved) history = [...history, optimisticMessage];
+        setAiMessages(history.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()));
       } else {
-        setAiMessages(current => current.some(message => message.id === optimisticMessage.id)
-          ? current
-          : [...current, optimisticMessage]);
+        // Even if history refresh fails, keep both the sent message and the
+        // assistant reply returned directly by the Edge Function.
+        setAiMessages(current => {
+          const next = [...current];
+          if (!next.some(message => message.id === optimisticMessage.id)) next.push(optimisticMessage);
+          if (savedAssistant && !next.some(message => message.id === savedAssistant.id)) next.push(savedAssistant);
+          return next.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        });
       }
     }
 
