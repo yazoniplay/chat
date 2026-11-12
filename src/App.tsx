@@ -197,7 +197,10 @@ export default function App() {
     setDeletionBusy(true); setDeletionError("");
     const { error } = await supabase.rpc("cancel_account_deletion");
     if (error) setDeletionError(error.message);
-    else setProfile(current => current ? { ...current, deletion_requested_at: null } : current);
+    else {
+      setProfile(current => current ? { ...current, deletion_requested_at: null } : current);
+      await loadConversations();
+    }
     setDeletionBusy(false);
   }
 
