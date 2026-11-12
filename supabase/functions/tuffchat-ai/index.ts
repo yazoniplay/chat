@@ -72,7 +72,7 @@ Deno.serve(async (req: Request) => {
       const result = await upstream.json();
       if (!upstream.ok) return reply({ error: String(result?.error?.message || "Chess AI request failed.").slice(0, 400) }, 502);
       const answer = (result?.candidates?.[0]?.content?.parts || []).map((part: { text?: string }) => part.text || "").join("").trim().toLowerCase();
-      const candidate = answer.match(/\\b[a-h][1-8][a-h][1-8][qrbn]?\\b/)?.[0];
+      const candidate = answer.match(/\b[a-h][1-8][a-h][1-8][qrbn]?\b/)?.[0];
       if (!candidate || !legalMoves.includes(candidate)) return reply({ error: "Tuffchat AI returned an invalid chess move. Please try again." }, 502);
       return reply({ move: candidate });
     } catch {
