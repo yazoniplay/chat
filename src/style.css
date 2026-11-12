@@ -481,3 +481,44 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent-light);o
 .avatar-library-decoration .avatar-image{z-index:1}
 .avatar-decoration-art{position:absolute;inset:-18%;width:136%;height:136%;object-fit:contain;z-index:3;pointer-events:none}
 .decoration-preview img{display:block;width:100%;height:100%;object-fit:contain}
+
+
+/* Tuffchat avatar frames: fully local CSS artwork, no third-party image hosts. */
+.avatar[class*="avatar-decoration-"]{overflow:visible!important;background:transparent!important;isolation:isolate}
+.avatar[class*="avatar-decoration-"]>.avatar-image{inset:5%;width:90%;height:90%;border-radius:50%;z-index:1}
+.avatar[class*="avatar-decoration-"]::before,.avatar[class*="avatar-decoration-"]::after{content:"";position:absolute;pointer-events:none;z-index:3}
+.avatar-decoration-halo::before{inset:-10%;border:3px solid #f5d77a;border-radius:50%;box-shadow:0 0 9px #ffd86a,0 0 20px #ffd86a88}
+.avatar-decoration-angel::before{inset:-17%;border:2px solid #e9e5ff;border-radius:50%;box-shadow:0 0 0 4px #d7c9ff55,0 0 16px #fff; background:conic-gradient(from 0deg,transparent 0 8%,#fff9 9% 10%,transparent 11% 24%,#fff9 25% 26%,transparent 27% 49%,#fff9 50% 51%,transparent 52% 74%,#fff9 75% 76%,transparent 77%)}
+.avatar-decoration-angel::after{content:"✦  ✦";inset:-22% 0 auto;text-align:center;color:#fff0b8;font-size:14px;letter-spacing:17px;text-shadow:0 0 8px #fff}
+.avatar-decoration-cat_ears::before{inset:-17% 8% auto;height:42%;background:linear-gradient(135deg,#f5b4d7,#a76de0);clip-path:polygon(0 100%,8% 0,43% 80%,57% 80%,92% 0,100% 100%);filter:drop-shadow(0 2px 3px #000)}
+.avatar-decoration-cat_ears::after{inset:-7%;border:2px solid #f5b4d7;border-radius:50%;box-shadow:0 0 12px #ed9bd788}
+.avatar-decoration-nightwraith::before{inset:-14%;border:4px double #8a78ff;border-radius:38%;transform:rotate(45deg);box-shadow:0 0 12px #705cff}
+.avatar-decoration-nightwraith::after{content:"☾";inset:-20% -8% auto auto;color:#b9aaff;font-size:23px;text-shadow:0 0 10px #9b80ff}
+.avatar-decoration-solar_flare::before{inset:-17%;border:3px solid #ffb34d;border-radius:50%;box-shadow:0 0 9px #ff8a24,0 0 22px #ff6b2488;background:repeating-conic-gradient(from 0deg,#ffb34d 0 4deg,transparent 4deg 22deg);mask:radial-gradient(circle,transparent 59%,#000 61%)}
+.avatar-decoration-solar_flare::after{inset:-8%;border:1px solid #ffe0a3;border-radius:50%;box-shadow:0 0 10px #ffcf70}
+.avatar-decoration-comets::before{inset:-15%;border:2px dashed #74dcff;border-radius:50%;transform:rotate(-25deg);box-shadow:0 0 12px #39bde9}
+.avatar-decoration-comets::after{content:"✦";inset:-20% -7% auto auto;color:#b8f2ff;font-size:22px;text-shadow:0 0 10px #43cfff}
+.avatar-decoration-hologram_dragon::before{inset:-14%;border:3px solid #49f0db;border-radius:44%;transform:rotate(35deg);box-shadow:0 0 8px #27e8d0,0 0 18px #27e8d088}
+.avatar-decoration-hologram_dragon::after{content:"♢";inset:-19% auto auto -6%;color:#7dfff1;font-size:22px;text-shadow:0 0 8px #27e8d0}
+.avatar-decoration-malefic_crown::before{inset:-20% 4% auto;height:43%;background:linear-gradient(135deg,#ff6b78,#6d1c3d);clip-path:polygon(0 100%,5% 28%,27% 70%,39% 0,54% 69%,78% 10%,86% 72%,100% 35%,96% 100%);filter:drop-shadow(0 0 5px #ff476e)}
+.avatar-decoration-malefic_crown::after{inset:-8%;border:2px solid #c63e69;border-radius:50%;box-shadow:0 0 12px #a31b50}
+.avatar-decoration-fire::before{inset:-16%;border:4px dotted #ff9c38;border-radius:50%;box-shadow:0 0 12px #ff5b20,0 0 20px #ff8c2a88}
+.avatar-decoration-fire::after{content:"🔥";inset:-24% -8% auto auto;font-size:19px;filter:drop-shadow(0 0 5px #ff6a22)}
+.avatar-decoration-aurora::before{inset:-17%;border:3px solid transparent;border-radius:50%;background:linear-gradient(120deg,#6cf7d8,#9b83ff,#f28bd6) border-box;mask:linear-gradient(#000 0 0) padding-box,linear-gradient(#000 0 0);mask-composite:exclude;box-shadow:0 0 14px #8c7bff88}
+.avatar-decoration-aurora::after{inset:-7%;border:1px solid #a6ffe6;border-radius:50%;box-shadow:0 0 12px #65f5dc}
+.decoration-preview{position:relative;overflow:visible!important;background:none!important;border-radius:50%}
+.decoration-preview::before,.decoration-preview::after{content:"";position:absolute;pointer-events:none}
+.decoration-preview-halo::before,.decoration-preview-angel::before,.decoration-preview-cat_ears::after,.decoration-preview-nightwraith::before,.decoration-preview-solar_flare::before,.decoration-preview-comets::before,.decoration-preview-hologram_dragon::before,.decoration-preview-malefic_crown::after,.decoration-preview-fire::before,.decoration-preview-aurora::before{inset:5%;border:3px solid #d8c5ff;border-radius:50%;box-shadow:0 0 8px currentColor}
+.decoration-preview-halo::before{border-color:#f5d77a}
+.decoration-preview-angel::before{border-color:#fff;box-shadow:0 0 10px #fff}
+.decoration-preview-cat_ears::before{content:"";inset:-4% 10% auto;height:48%;background:#e99acb;clip-path:polygon(0 100%,8% 0,43% 80%,57% 80%,92% 0,100% 100%)}
+.decoration-preview-nightwraith::before{border-color:#8a78ff;border-radius:35%;transform:rotate(45deg)}
+.decoration-preview-solar_flare::before{border-color:#ff9d38;box-shadow:0 0 10px #ff762b}
+.decoration-preview-comets::before{border-color:#74dcff;border-style:dashed}
+.decoration-preview-hologram_dragon::before{border-color:#49f0db;transform:rotate(35deg)}
+.decoration-preview-malefic_crown::before{content:"♛";inset:-25% 0 auto;text-align:center;color:#e65a7a;font-size:30px}
+.decoration-preview-fire::before{border-color:#ff7835;border-style:dotted}
+.decoration-preview-aurora::before{border-color:#72efd8;box-shadow:0 0 12px #8c7bff}
+.decoration-preview-angel::after{content:"✦";inset:-12% 0 auto;text-align:center;color:#fff0b8}
+.decoration-preview-comets::after{content:"✦";inset:-12% -8% auto auto;color:#b8f2ff}
+.decoration-preview-fire::after{content:"🔥";inset:-22% -8% auto auto;font-size:13px}
