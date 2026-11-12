@@ -522,3 +522,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent-light);o
 .decoration-preview-angel::after{content:"✦";inset:-12% 0 auto;text-align:center;color:#fff0b8}
 .decoration-preview-comets::after{content:"✦";inset:-12% -8% auto auto;color:#b8f2ff}
 .decoration-preview-fire::after{content:"🔥";inset:-22% -8% auto auto;font-size:13px}
+
+/* Personal message-yourself conversation */
+.self-chat-row .chat-row-copy b{color:var(--accent-light)}
+.self-chat-row .chat-time{color:var(--accent-light);font-weight:800;letter-spacing:.8px}
