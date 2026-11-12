@@ -601,34 +601,57 @@ export default function App() {
     e?.preventDefault();
     const prompt = aiDraft.trim();
     if ((!prompt && !aiImageData) || !session?.user || aiSending) return;
+
+    const imageData = aiImageData;
+    const optimisticMessage: AiMessage = {
+      id: `pending-${Date.now()}`,
+      role: "user",
+      content: prompt || "Please look at this image.",
+      image_data: imageData,
+      created_at: new Date().toISOString(),
+    };
+    // Show the user's message immediately; never make it disappear just
+    // because Gemini or the history refresh fails.
+    setAiMessages(current => [...current, optimisticMessage]);
     setAiSending(true);
     setAiDraft("");
+    setAiImageData(null);
     setAiError("");
+
     const dateContext = new Intl.DateTimeFormat(undefined, { dateStyle: "full", timeStyle: "long" }).format(new Date());
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-    const imageData = aiImageData;
-    setAiImageData(null);
-    const { error } = await supabase.functions.invoke("tuffchat-ai", { body: { message: prompt, image_data: imageData, date_context: dateContext, time_zone: timeZone } });
+    const { error } = await supabase.functions.invoke("tuffchat-ai", {
+      body: { message: prompt, image_data: imageData, date_context: dateContext, time_zone: timeZone }
+    });
+
+    let requestError = "";
     if (error) {
-      let detail = error.message || "Couldn't reach Tuffchat AI.";
+      requestError = error.message || "Couldn't reach Tuffchat AI.";
       const response = (error as any).context;
       if (response && typeof response.clone === "function") {
         try {
           const payload = await response.clone().json();
-          if (typeof payload?.error === "string" && payload.error.trim()) detail = payload.error;
+          if (typeof payload?.error === "string" && payload.error.trim()) requestError = payload.error;
         } catch { /* Keep the SDK error when the response isn't JSON. */ }
       }
-      setAiError(detail);
-      setAiDraft(prompt);
-      setAiImageData(imageData);
-    } else {
-      const { data, error: loadError } = await supabase.from("personal_ai_messages")
-        .select("id,role,content,image_data,created_at")
-        .eq("user_id", session.user.id)
-        .order("created_at", { ascending: true }).limit(100);
-      if (loadError) setAiError(loadError.message);
-      setAiMessages((data || []) as AiMessage[]);
     }
+
+    // The Edge Function stores the user message before contacting Gemini.
+    // Refresh on both success and failure so that saved messages remain visible.
+    const { data, error: loadError } = await supabase.from("personal_ai_messages")
+      .select("id,role,content,image_data,created_at")
+      .eq("user_id", session.user.id)
+      .order("created_at", { ascending: true }).limit(100);
+
+    if (!loadError && data) {
+      setAiMessages(data as AiMessage[]);
+    } else {
+      setAiMessages(current => current.filter(message => message.id !== optimisticMessage.id));
+      setAiMessages(current => [...current, optimisticMessage]);
+    }
+
+    if (requestError) setAiError(requestError);
+    else if (loadError) setAiError("Your message was sent, but the chat history couldn't refresh: " + loadError.message);
     setAiSending(false);
   }
 
