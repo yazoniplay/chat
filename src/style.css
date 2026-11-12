@@ -430,12 +430,10 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent-light);o
 .avatar-decoration-flame:after{background-image:url("/chat/avatar-decorations/flame.svg")}
 .avatar-status{z-index:4}
 .profile-card{isolation:isolate}
-.profile-card:before{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;background-position:center;background-repeat:no-repeat;background-size:cover;opacity:.95}
-.profile-effect-glow:before{background-image:url("/chat/profile-effects/spotlight.svg")}
-.profile-effect-shimmer:before{background-image:url("/chat/profile-effects/holographic.svg")}
-.profile-effect-aurora:before{background-image:url("/chat/profile-effects/aurora.svg")}
-.profile-effect-sparkle:before{background-image:url("/chat/profile-effects/stardust.svg")}
-.profile-card>*:not(.profile-close){position:relative;z-index:2}
+.profile-effect-layer{position:absolute;inset:0;z-index:1;overflow:hidden;pointer-events:none;opacity:.98;display:flex;align-items:stretch;justify-content:center}
+.profile-effect-layer>div{width:100%!important;height:100%!important;max-width:none!important;min-width:0!important}
+.profile-effect-layer img{max-width:none!important}
+.profile-card>*:not(.profile-close):not(.profile-effect-layer){position:relative;z-index:2}
 .profile-card .profile-close{z-index:4}
 .profile-card-main .avatar{overflow:visible}
 .profile-badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
@@ -456,10 +454,9 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent-light);o
 .decoration-preview-none{border:1px dashed #84939b;border-radius:50%;width:18px;height:18px;flex-basis:18px;margin:0 3px}
 .effect-preview{display:inline-block;width:42px;height:25px;flex:0 0 42px;border-radius:6px;background-position:center;background-repeat:no-repeat;background-size:cover;overflow:hidden}
 .effect-preview-none{background:#26343d;border:1px solid #ffffff22}
-.effect-preview-glow{background-image:url("/chat/profile-effects/spotlight.svg")}
-.effect-preview-shimmer{background-image:url("/chat/profile-effects/holographic.svg")}
-.effect-preview-aurora{background-image:url("/chat/profile-effects/aurora.svg")}
-.effect-preview-sparkle{background-image:url("/chat/profile-effects/stardust.svg")}
+.effect-preview-oni{width:48px;height:30px;flex-basis:48px;display:flex;align-items:center;justify-content:center}
+.effect-preview-oni>div{width:100%!important;height:100%!important;transform:scale(.22);transform-origin:center center}
+.profile-card-has-effect{isolation:isolate}
 .effect-style-choice{min-width:126px}
-@media(prefers-reduced-motion:reduce){.avatar-decoration-halo:after,.avatar-decoration-orbit:after,.avatar-decoration-crown:after,.avatar-decoration-diamond:after,.avatar-decoration-flame:after,.profile-card:before{animation:none!important}}
+@media(prefers-reduced-motion:reduce){.avatar-decoration-halo:after,.avatar-decoration-orbit:after,.avatar-decoration-crown:after,.avatar-decoration-diamond:after,.avatar-decoration-flame:after,.profile-effect-layer{animation:none!important}}
 @media(max-width:600px){.profile-mutuals{margin-left:16px;margin-right:16px}.profile-badges{gap:4px}.profile-badge{font-size:9px;padding:4px 7px}}
