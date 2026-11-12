@@ -42,6 +42,7 @@ export default function ChatGames({ conversationId, userId, members, conversatio
   const [aiThinking, setAiThinking] = useState(false);
   const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
   const [promotion, setPromotion] = useState<{from: Square; to: Square} | null>(null);
+  const [lastMove, setLastMove] = useState<{from: Square; to: Square; capture: boolean; stamp: number} | null>(null);
 
   const opponents = members.filter(member => member.user_id !== userId);
   const selectedGame = selectedId ? games.find(game => game.id === selectedId) || null : null;
@@ -132,6 +133,7 @@ export default function ChatGames({ conversationId, userId, members, conversatio
     if (updateError || !data) { setError(updateError?.message || "The board changed on another device. Refreshing…"); await refresh(); return; }
     const saved = data as ChatGame;
     setGames(prev => prev.map(item => item.id === saved.id ? saved : item));
+    setLastMove({ from, to, capture: !!move.captured || move.isEnPassant(), stamp: Date.now() });
     setSelectedSquare(null); setPromotion(null);
     if (isAiGame && !finished && current.turn() === "b" && !fromAi) void requestAiMove(saved);
   }
@@ -151,6 +153,7 @@ export default function ChatGames({ conversationId, userId, members, conversatio
     const aiPosition = new Chess(game.fen);
     try { aiPosition.move({ from: uci.slice(0,2) as Square, to: uci.slice(2,4) as Square, promotion: uci[4] || "q" }); }
     catch { setError("Tuffchat AI suggested an illegal move. Try again."); return; }
+    const aiMove = aiPosition.history({ verbose: true }).slice(-1)[0];
     const finished = aiPosition.isGameOver();
     const winner = aiPosition.isCheckmate() ? (aiPosition.turn() === "w" ? game.black_player : game.white_player) : null;
     const { data: saved, error: saveError } = await supabase.from("chat_games")
@@ -158,6 +161,7 @@ export default function ChatGames({ conversationId, userId, members, conversatio
       .eq("id", game.id).eq("fen", game.fen).select("*").maybeSingle();
     if (saveError || !saved) { setError(saveError?.message || "The board changed while AI was thinking. Refreshing…"); await refresh(); return; }
     setGames(prev => prev.map(item => item.id === game.id ? saved as ChatGame : item));
+    if (aiMove) setLastMove({ from: aiMove.from, to: aiMove.to, capture: !!aiMove.captured || aiMove.isEnPassant(), stamp: Date.now() });
   }
 
   function chooseSquare(square: Square) {
@@ -199,8 +203,13 @@ export default function ChatGames({ conversationId, userId, members, conversatio
             const square = ("abcdefgh"[file] + (8-rank)) as Square;
             const selected = selectedSquare === square;
             const target = legalTargets.includes(square);
-            return <button key={square} type="button" className={`chat-chess-square ${(rank+file)%2===0?"light":"dark"} ${selected?"selected":""} ${target?"target":""} ${piece?"occupied":""}`} onClick={() => chooseSquare(square)} aria-label={square + (piece ? " " + piece.color + " " + piece.type : "")}>
-              {piece && <span key={square + piece.color + piece.type} className={"chess-piece-wrap " + (piece.color === "w" ? "piece-white" : "piece-black")}><ChessPiece color={piece.color} type={piece.type}/></span>}
+            const fromLastMove = lastMove?.from === square;
+            const toLastMove = lastMove?.to === square;
+            const movingPiece = !!piece && toLastMove && !!lastMove;
+            const moveDx = movingPiece ? "abcdefgh".indexOf(lastMove!.from[0]) - file : 0;
+            const moveDy = movingPiece ? Number(lastMove!.from[1]) - Number(square[1]) : 0;
+            return <button key={square} type="button" className={`chat-chess-square ${(rank+file)%2===0?"light":"dark"} ${selected?"selected":""} ${target?"target":""} ${piece?"occupied":""} ${fromLastMove?"last-from":""} ${toLastMove?"last-to":""} ${target&&piece?"capture-target":""}`} onClick={() => chooseSquare(square)} aria-label={square + (piece ? " " + piece.color + " " + piece.type : "")}>
+              {piece && <span key={square + piece.color + piece.type + (movingPiece ? lastMove!.stamp : "")} style={movingPiece ? ({ "--move-x": moveDx, "--move-y": moveDy } as React.CSSProperties) : undefined} className={"chess-piece-wrap " + (piece.color === "w" ? "piece-white" : "piece-black") + (movingPiece ? " chess-piece-moving" : "")}><ChessPiece color={piece.color} type={piece.type}/></span>}
               {file===0 && <i>{8-rank}</i>}{rank===7 && <em>{"abcdefgh"[file]}</em>}
             </button>;
           }))}
