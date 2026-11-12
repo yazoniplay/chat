@@ -417,34 +417,49 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent-light);o
   color:#fff;
 }
 
-/* Profile effects, avatar decorations, badges and mutuals */
+
+/* Tuffchat cosmetic assets: locally bundled animated SVGs */
+.avatar{position:relative;isolation:isolate;overflow:visible}
+.avatar-decoration-halo:after,.avatar-decoration-orbit:after,.avatar-decoration-diamond:after,.avatar-decoration-flame:after,.avatar-decoration-crown:after{
+  content:"";position:absolute;inset:-17%;border-radius:50%;pointer-events:none;z-index:2;background-position:center;background-repeat:no-repeat;background-size:contain;
+}
+.avatar-decoration-halo:after{background-image:url("/chat/avatar-decorations/halo.svg")}
+.avatar-decoration-orbit:after{background-image:url("/chat/avatar-decorations/orbit.svg")}
+.avatar-decoration-crown:after{background-image:url("/chat/avatar-decorations/crown.svg")}
+.avatar-decoration-diamond:after{background-image:url("/chat/avatar-decorations/diamond.svg")}
+.avatar-decoration-flame:after{background-image:url("/chat/avatar-decorations/flame.svg")}
+.avatar-status{z-index:4}
+.profile-card{isolation:isolate}
+.profile-card:before{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;background-position:center;background-repeat:no-repeat;background-size:cover;opacity:.95}
+.profile-effect-glow:before{background-image:url("/chat/profile-effects/spotlight.svg")}
+.profile-effect-shimmer:before{background-image:url("/chat/profile-effects/holographic.svg")}
+.profile-effect-aurora:before{background-image:url("/chat/profile-effects/aurora.svg")}
+.profile-effect-sparkle:before{background-image:url("/chat/profile-effects/stardust.svg")}
+.profile-card>*{position:relative;z-index:2}
+.profile-card .profile-close{z-index:4}
+.profile-card-main .avatar{overflow:visible}
 .profile-badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-.profile-badge{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border-radius:999px;font-size:10px;font-weight:900;letter-spacing:.02em;border:1px solid #ffffff55;box-shadow:0 3px 12px #0003}
-.founder-badge{background:linear-gradient(110deg,#f6d77b,#b77b2f);color:#30200b}
-.supporter-badge{background:linear-gradient(110deg,#c8b8ff,#8063d6);color:#241746}
-.profile-mutuals{margin:16px 26px 0;padding:14px 15px;border:1px solid #ffffff35;border-radius:13px;background:#10131a66;backdrop-filter:blur(12px)}
-.profile-mutuals-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
-.profile-mutuals-heading b{font-size:12px;color:#fff}.profile-mutuals-heading span{font-size:10px;color:#ffffffb8}
-.mutual-group-list,.mutual-people-list{display:flex;flex-wrap:wrap;gap:7px}
-.mutual-group-list span{padding:5px 8px;border-radius:7px;background:#ffffff20;color:#fff;font-size:10px;font-weight:700}
-.mutual-people-list{margin-top:10px}
-.mutual-people-list>span{display:flex;align-items:center;gap:6px;padding:4px 7px 4px 4px;border-radius:999px;background:#ffffff18;color:#fff;font-size:10px}
-.mutual-people-list .avatar{width:22px;height:22px;min-width:22px;font-size:9px}
+.profile-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:7px;font-size:10px;font-weight:800;letter-spacing:.025em;border:1px solid;box-shadow:0 2px 8px #0003;background:#20272d;color:#f0f2f4}
+.founder-badge{background:#29251c;color:#f0d38a;border-color:#8e7540}
+.supporter-badge{background:#222a31;color:#c8d5e0;border-color:#667887}
+.profile-mutuals{position:relative;z-index:2}
 .style-choice-grid{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 12px}
-.style-choice{display:flex;align-items:center;gap:7px;padding:9px 11px;border:1px solid var(--border,#34464f);border-radius:10px;background:var(--panel,#17252c);color:inherit;font-size:11px;font-weight:700;cursor:pointer}
-.style-choice>span{font-size:15px}
-.style-choice.active{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 17%,transparent);box-shadow:0 0 0 1px var(--accent)}
-.avatar-decoration-halo:after,.avatar-decoration-orbit:after,.avatar-decoration-diamond:after,.avatar-decoration-flame:after,.avatar-decoration-crown:after{content:"";position:absolute;inset:-5px;border-radius:50%;pointer-events:none}
-.avatar-decoration-halo:after{border:3px solid #d6c5ff;box-shadow:0 0 12px #b89aff,0 0 24px #8d68ff}
-.avatar-decoration-orbit:after{border:2px solid #79dcff;box-shadow:0 0 0 4px #79dcff40;transform:rotate(-25deg) scaleX(1.12)}
-.avatar-decoration-diamond:after{border:3px double #8ee8e1;box-shadow:0 0 15px #8ee8e188}
-.avatar-decoration-flame:after{border:3px solid #ff9b5f;box-shadow:0 0 16px #ff713d,0 0 25px #ffb45c}
-.avatar-decoration-crown:before{content:"♛";position:absolute;z-index:3;top:-15px;left:50%;transform:translateX(-50%);font-size:19px;color:#ffda78;text-shadow:0 2px 7px #0009}
-.profile-effect-glow{box-shadow:0 0 0 1px #ffffff55,0 0 34px #b58aff88,0 25px 80px #0009}
-.profile-effect-shimmer{background-size:220% 220%!important;animation:profile-shimmer 5s ease-in-out infinite}
-.profile-effect-aurora{background-size:240% 240%!important;animation:profile-aurora 8s ease-in-out infinite}
-.profile-effect-sparkle:after{content:"✦  ·  ✧     ✦       ·   ✧";position:absolute;inset:0;pointer-events:none;z-index:1;padding:18px;color:#fff9;font-size:15px;letter-spacing:20px;text-shadow:0 0 12px #fff;opacity:.6;animation:profile-sparkle 4s ease-in-out infinite}
-@keyframes profile-shimmer{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
-@keyframes profile-aurora{0%,100%{background-position:0% 50%;filter:saturate(1)}50%{background-position:100% 50%;filter:saturate(1.35)}}
-@keyframes profile-sparkle{0%,100%{opacity:.25}50%{opacity:.75}}
+.style-choice{display:flex;align-items:center;gap:8px;padding:9px 11px;border:1px solid var(--border,#34464f);border-radius:10px;background:var(--panel,#17252c);color:inherit;font-size:11px;font-weight:700;cursor:pointer;transition:border-color .18s,background .18s,transform .18s}
+.style-choice:hover{transform:translateY(-1px)}
+.style-choice.active{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 13%,transparent);box-shadow:0 0 0 1px var(--accent)}
+.decoration-preview{display:inline-block;width:25px;height:25px;flex:0 0 25px;background-position:center;background-repeat:no-repeat;background-size:contain}
+.decoration-preview-halo{background-image:url("/chat/avatar-decorations/halo.svg")}
+.decoration-preview-orbit{background-image:url("/chat/avatar-decorations/orbit.svg")}
+.decoration-preview-crown{background-image:url("/chat/avatar-decorations/crown.svg")}
+.decoration-preview-diamond{background-image:url("/chat/avatar-decorations/diamond.svg")}
+.decoration-preview-flame{background-image:url("/chat/avatar-decorations/flame.svg")}
+.decoration-preview-none{border:1px dashed #84939b;border-radius:50%;width:18px;height:18px;flex-basis:18px;margin:0 3px}
+.effect-preview{display:inline-block;width:42px;height:25px;flex:0 0 42px;border-radius:6px;background-position:center;background-repeat:no-repeat;background-size:cover;overflow:hidden}
+.effect-preview-none{background:#26343d;border:1px solid #ffffff22}
+.effect-preview-glow{background-image:url("/chat/profile-effects/spotlight.svg")}
+.effect-preview-shimmer{background-image:url("/chat/profile-effects/holographic.svg")}
+.effect-preview-aurora{background-image:url("/chat/profile-effects/aurora.svg")}
+.effect-preview-sparkle{background-image:url("/chat/profile-effects/stardust.svg")}
+.effect-style-choice{min-width:126px}
+@media(prefers-reduced-motion:reduce){.avatar-decoration-halo:after,.avatar-decoration-orbit:after,.avatar-decoration-crown:after,.avatar-decoration-diamond:after,.avatar-decoration-flame:after,.profile-card:before{animation:none!important}}
 @media(max-width:600px){.profile-mutuals{margin-left:16px;margin-right:16px}.profile-badges{gap:4px}.profile-badge{font-size:9px;padding:4px 7px}}
