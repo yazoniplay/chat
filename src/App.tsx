@@ -1,0 +1,189 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import { supabase, isConfigured } from "./lib/supabase";
+import type { Session } from "@supabase/supabase-js";
+import { Search, MessageCircle, Users, Plus, Send, Smile, LogOut, Settings, Phone, Video, MoreVertical, ArrowLeft, X, CheckCheck, Image as ImageIcon } from "lucide-react";
+
+type Profile = { id: string; username: string; display_name: string; avatar_url: string | null };
+type Conversation = { id: string; name: string | null; is_group: boolean; created_at: string; conversation_members?: { user_id: string; profiles: Profile | null }[] };
+type Message = { id: string; conversation_id: string; sender_id: string; content: string; kind: string; created_at: string };
+const EMOJIS = ["😀","😂","🥹","😍","😎","🔥","❤️","💀","😭","👍","🙏","🎉","💯","👀","🤝","✨","🥶","😈"];
+
+function Avatar({ profile, label, size = "md" }: { profile?: Profile | null; label?: string; size?: "sm" | "md" | "lg" }) {
+  const name = profile?.display_name || profile?.username || label || "?";
+  return <div className={`avatar avatar-${size}`} style={profile?.avatar_url ? { backgroundImage: `url(${profile.avatar_url})` } : undefined}>{!profile?.avatar_url && name.slice(0,1).toUpperCase()}</div>;
+}
+
+export default function App() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [username, setUsername] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeId, setActiveId] = useState("");
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [draft, setDraft] = useState("");
+  const [search, setSearch] = useState("");
+  const [people, setPeople] = useState<Profile[]>([]);
+  const [showPeople, setShowPeople] = useState(false);
+  const [showGroup, setShowGroup] = useState(false);
+  const [groupName, setGroupName] = useState("");
+  const [groupSearch, setGroupSearch] = useState("");
+  const [groupPeople, setGroupPeople] = useState<Profile[]>([]);
+  const [selectedPeople, setSelectedPeople] = useState<string[]>([]);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [mobileChat, setMobileChat] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [gifSearch, setGifSearch] = useState("");
+  const [gifResults, setGifResults] = useState<{url:string; preview:string}[]>([]);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isConfigured) { setLoading(false); return; }
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => setSession(next));
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!session?.user) { setProfile(null); setConversations([]); setActiveId(""); setLoading(false); return; }
+    let live = true;
+    (async () => {
+      const { data } = await supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
+      if (live) setProfile(data as Profile | null);
+      await loadConversations();
+      if (live) setLoading(false);
+    })();
+    return () => { live = false; };
+  }, [session?.user.id]);
+
+  async function loadConversations() {
+    if (!session?.user) return;
+    const { data: memberships } = await supabase.from("conversation_members").select("conversation_id").eq("user_id", session.user.id);
+    const ids = (memberships || []).map((m: {conversation_id:string}) => m.conversation_id);
+    if (!ids.length) { setConversations([]); return; }
+    const { data } = await supabase.from("conversations").select("id,name,is_group,created_at,conversation_members(user_id,profiles(id,username,display_name,avatar_url))").in("id", ids).order("created_at", { ascending: false });
+    setConversations((data || []) as unknown as Conversation[]);
+  }
+
+  const active = conversations.find(c => c.id === activeId);
+  const activeMembers = active?.conversation_members || [];
+  const otherMember = activeMembers.find(m => m.user_id !== session?.user.id)?.profiles;
+  const activeTitle = active?.is_group ? (active.name || "Group chat") : (otherMember?.display_name || otherMember?.username || "Chat");
+
+  useEffect(() => {
+    if (!activeId) { setMessages([]); return; }
+    let live = true;
+    supabase.from("messages").select("*").eq("conversation_id", activeId).order("created_at", { ascending: true }).limit(200)
+      .then(({ data }) => { if (live) setMessages((data || []) as Message[]); });
+    const channel = supabase.channel(`messages-${activeId}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${activeId}` }, payload => {
+        const next = payload.new as Message;
+        setMessages(prev => prev.some(m => m.id === next.id) ? prev : [...prev, next]);
+      }).subscribe();
+    return () => { live = false; supabase.removeChannel(channel); };
+  }, [activeId]);
+
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+
+  async function authenticate(e: React.FormEvent) {
+    e.preventDefault(); setAuthError("");
+    if (authMode === "signup") {
+      const clean = username.trim().toLowerCase();
+      if (!/^[a-z0-9_]{3,20}$/.test(clean)) { setAuthError("Username must be 3–20 characters (letters, numbers or _)."); return; }
+      const { error } = await supabase.auth.signUp({ email, password, options: { data: { username: clean, display_name: displayName.trim() || clean } } });
+      if (error) setAuthError(error.message);
+      else setAuthError("Account created! If email confirmation is enabled, check your inbox.");
+    } else {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) setAuthError(error.message);
+    }
+  }
+
+  async function searchPeople(value: string, group = false) {
+    if (group) setGroupSearch(value); else setSearch(value);
+    if (value.trim().length < 2) { group ? setGroupPeople([]) : setPeople([]); return; }
+    const { data } = await supabase.from("profiles").select("id,username,display_name,avatar_url").ilike("username", `%${value.trim()}%`).neq("id", session?.user.id || "").limit(12);
+    group ? setGroupPeople((data || []) as Profile[]) : setPeople((data || []) as Profile[]);
+  }
+
+  async function startDirect(person: Profile) {
+    if (!session?.user) return;
+    const { data: mine } = await supabase.from("conversation_members").select("conversation_id").eq("user_id", session.user.id);
+    const ids = (mine || []).map((m: {conversation_id:string}) => m.conversation_id);
+    if (ids.length) {
+      const { data: shared } = await supabase.from("conversation_members").select("conversation_id").eq("user_id", person.id).in("conversation_id", ids);
+      if (shared?.length) {
+        const { data: existing } = await supabase.from("conversations").select("id,is_group").in("id", shared.map(x => x.conversation_id)).eq("is_group", false).limit(1).maybeSingle();
+        if (existing) { await loadConversations(); setActiveId(existing.id); setMobileChat(true); setShowPeople(false); return; }
+      }
+    }
+    const { data: convo, error } = await supabase.from("conversations").insert({ created_by: session.user.id, is_group: false }).select().single();
+    if (error || !convo) { setAuthError(error?.message || "Couldn't create chat."); return; }
+    await supabase.from("conversation_members").insert([{ conversation_id: convo.id, user_id: session.user.id }, { conversation_id: convo.id, user_id: person.id }]);
+    await loadConversations(); setActiveId(convo.id); setMobileChat(true); setShowPeople(false); setSearch("");
+  }
+
+  async function createGroup() {
+    if (!session?.user || !selectedPeople.length || !groupName.trim()) return;
+    const { data: convo, error } = await supabase.from("conversations").insert({ created_by: session.user.id, name: groupName.trim(), is_group: true }).select().single();
+    if (error || !convo) { setAuthError(error?.message || "Couldn't create group."); return; }
+    await supabase.from("conversation_members").insert([session.user.id, ...selectedPeople].map(user_id => ({ conversation_id: convo.id, user_id })));
+    await loadConversations(); setActiveId(convo.id); setMobileChat(true); setShowGroup(false); setSelectedPeople([]); setGroupName(""); setGroupSearch("");
+  }
+
+  async function sendMessage(content = draft, kind = "text") {
+    if (!content.trim() || !activeId || !session?.user || sending) return;
+    setSending(true); setDraft(""); setEmojiOpen(false);
+    const { error } = await supabase.from("messages").insert({ conversation_id: activeId, sender_id: session.user.id, content: content.trim(), kind });
+    if (error) setDraft(content);
+    setSending(false);
+  }
+
+  async function searchGifs(value: string) {
+    setGifSearch(value);
+    const key = import.meta.env.VITE_TENOR_API_KEY as string | undefined;
+    if (!key || value.trim().length < 2) { setGifResults([]); return; }
+    try {
+      const res = await fetch(`https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(value)}&key=${key}&limit=12&media_filter=tinygif,gif`);
+      const json = await res.json();
+      setGifResults((json.results || []).map((item: any) => ({ url: item.media_formats?.gif?.url, preview: item.media_formats?.tinygif?.url })).filter((g: any) => g.url));
+    } catch { setGifResults([]); }
+  }
+
+  const sortedConversations = useMemo(() => conversations, [conversations]);
+  const lastMessages = useMemo(() => Object.fromEntries(sortedConversations.map(c => [c.id, "Tap to open conversation"])), [sortedConversations]);
+
+  if (!isConfigured) return <div className="setup-screen"><div className="setup-card"><div className="brand-mark">t</div><h1>Welcome to <span>Tuffchat</span></h1><p>Your crew, one chat away.</p><div className="setup-step"><b>One quick setup step</b><p>Connect a free Supabase project to power accounts, chats and live messages.</p><ol><li>Create a project at <a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer">supabase.com</a>.</li><li>Run <code>supabase/migrations/0001_tuffchat.sql</code> in its SQL Editor.</li><li>Copy <code>.env.example</code> to <code>.env.local</code> and add your project URL and anon key.</li></ol></div><p className="muted">No secret service-role key belongs in this app.</p></div></div>;
+
+  if (loading) return <div className="loading-screen"><div className="brand-mark">t</div><span>Loading Tuffchat…</span></div>;
+
+  if (!session) return <div className="auth-screen"><div className="auth-art"><div className="brand-mark">t</div><div><span className="eyebrow">YOUR PEOPLE. YOUR PLACE.</span><h1>Good chats.<br/><em>Better days.</em></h1><p>Bring your favourite people together, wherever life takes you.</p></div><div className="art-bubbles"><span>hey 👋</span><span>you coming? 🔥</span><span>always 😂</span></div></div><form className="auth-card" onSubmit={authenticate}><div className="auth-brand"><div className="brand-mark">t</div><b>Tuffchat</b></div><h2>{authMode === "login" ? "Welcome back" : "Make it official"}</h2><p className="muted">{authMode === "login" ? "Sign in to catch up with your people." : "Create an account and claim your username."}</p>{authMode === "signup" && <><label>Username<input value={username} onChange={e=>setUsername(e.target.value)} placeholder="your_username" required /></label><label>Display name<input value={displayName} onChange={e=>setDisplayName(e.target.value)} placeholder="What should people call you?" /></label></>}<label>Email<input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com" required /></label><label>Password<input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="At least 6 characters" minLength={6} required /></label>{authError && <div className="auth-message">{authError}</div>}<button className="primary-btn full" type="submit">{authMode === "login" ? "Sign in" : "Create account"}</button><p className="switch-auth">{authMode === "login" ? "New around here?" : "Already have an account?"} <button type="button" onClick={()=>{setAuthMode(authMode==="login"?"signup":"login");setAuthError("");}}>{authMode === "login" ? "Create account" : "Sign in"}</button></p></form></div>;
+
+  return <main className="app-shell">
+    <aside className={`sidebar ${mobileChat ? "sidebar-hidden" : ""}`}>
+      <header className="side-header"><div className="brand-lockup"><div className="brand-mark small">t</div><b>tuffchat</b></div><div className="side-actions"><button title="New group" onClick={()=>setShowGroup(true)}><Users size={19}/></button><button title="Find people" onClick={()=>setShowPeople(true)}><Plus size={21}/></button><button title="Sign out" onClick={()=>supabase.auth.signOut()}><LogOut size={18}/></button></div></header>
+      <div className="profile-strip"><Avatar profile={profile} /><div className="profile-meta"><b>{profile?.display_name || profile?.username}</b><span>@{profile?.username}</span></div><button title="Settings"><Settings size={17}/></button></div>
+      <div className="search-box"><Search size={17}/><input placeholder="Search or start a new chat" value={search} onChange={e=>searchPeople(e.target.value)} /><button onClick={()=>setShowPeople(true)} title="Find people"><Plus size={17}/></button></div>
+      {search.length >= 2 && <div className="search-results">{people.map(p=><button className="person-row" key={p.id} onClick={()=>startDirect(p)}><Avatar profile={p}/><span><b>{p.display_name || p.username}</b><small>@{p.username}</small></span><MessageCircle size={17}/></button>)}</div>}
+      <div className="chat-list-label">MESSAGES <span>{conversations.length}</span></div>
+      <div className="chat-list">{sortedConversations.map(c=>{const member = c.conversation_members?.find(m=>m.user_id!==session.user.id)?.profiles; const title = c.is_group ? c.name || "Group chat" : member?.display_name || member?.username || "Direct chat"; return <button key={c.id} className={`chat-row ${activeId===c.id?"selected":""}`} onClick={()=>{setActiveId(c.id);setMobileChat(true);}}><Avatar profile={member} label={title}/><span className="chat-row-copy"><b>{title}</b><small>{lastMessages[c.id]}</small></span><span className="chat-time">{new Date(c.created_at).toLocaleDateString([], {month:"short",day:"numeric"})}</span></button>;})}
+      {!conversations.length && <div className="empty-list"><MessageCircle size={26}/><b>No chats yet</b><span>Find a friend and say hello.</span><button onClick={()=>setShowPeople(true)}>Find people</button></div>}</div>
+      <footer className="side-footer"><span className="online-dot"/> Your space is ready</footer>
+    </aside>
+    <section className={`chat-panel ${mobileChat ? "chat-panel-mobile" : ""}`}>
+      {active ? <><header className="chat-header"><button className="mobile-back" onClick={()=>setMobileChat(false)}><ArrowLeft/></button><Avatar profile={otherMember} label={activeTitle}/><div className="chat-heading"><b>{activeTitle}</b><span>{active.is_group ? `${activeMembers.length} members` : "Direct message"}</span></div><div className="chat-header-actions"><button title="Voice call"><Phone size={18}/></button><button title="Video call"><Video size={19}/></button><button title="More"><MoreVertical size={19}/></button></div></header>
+      <div className="message-area"><div className="date-chip">TODAY</div>{messages.map(m=>{const mine=m.sender_id===session.user.id; const sender=activeMembers.find(x=>x.user_id===m.sender_id)?.profiles; return <div key={m.id} className={`message-line ${mine?"mine":""}`}>{!mine && active.is_group && <Avatar profile={sender} size="sm"/>}<div className="message-bubble">{!mine && active.is_group && <b className="sender-name">{sender?.display_name || sender?.username || "Member"}</b>}{m.kind==="gif" ? <img className="gif-message" src={m.content} alt="GIF"/> : <span>{m.content}</span>}<small>{new Date(m.created_at).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})} {mine && <CheckCheck size={14}/>}</small></div></div>;})}<div ref={bottomRef}/>{!messages.length && <div className="first-message"><div>👋</div><b>This is the start of something good.</b><span>Send a message to kick things off.</span></div>}</div>
+      {emojiOpen && <div className="emoji-tray">{EMOJIS.map(e=><button key={e} onClick={()=>setDraft(d=>d+e)}>{e}</button>)}</div>}
+      <form className="composer" onSubmit={e=>{e.preventDefault();sendMessage();}}><button type="button" title="Emoji" onClick={()=>setEmojiOpen(!emojiOpen)}><Smile size={22}/></button><input value={draft} onChange={e=>setDraft(e.target.value)} placeholder="Type a message…" /><button type="submit" className="send-btn" disabled={!draft.trim() || sending}><Send size={19}/></button></form>
+      </> : <div className="welcome-panel"><div className="welcome-graphic"><div className="welcome-icon"><MessageCircle size={42}/></div><span>✦</span><span>✦</span></div><h1>Good to see you.</h1><p>Pick a conversation or find your people to get started.</p><button className="primary-btn" onClick={()=>setShowPeople(true)}><Plus size={18}/> Start a chat</button><div className="encryption-note">Private conversations for your favourite people.</div></div>}
+    </section>
+    {showPeople && <div className="modal-backdrop" onClick={()=>setShowPeople(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><div><h2>Find your people</h2><p>Search by their username.</p></div><button onClick={()=>setShowPeople(false)}><X/></button></div><div className="modal-search"><Search size={18}/><input autoFocus value={search} onChange={e=>searchPeople(e.target.value)} placeholder="Search usernames…"/></div>{people.map(p=><button className="person-row" key={p.id} onClick={()=>startDirect(p)}><Avatar profile={p}/><span><b>{p.display_name || p.username}</b><small>@{p.username}</small></span><MessageCircle size={18}/></button>)}{search.length<2 && <div className="modal-hint">Type at least 2 characters to search.</div>}{search.length>=2 && !people.length && <div className="modal-hint">No users found yet.</div>}</div></div>}
+    {showGroup && <div className="modal-backdrop" onClick={()=>setShowGroup(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><div><h2>Make a group</h2><p>Bring the whole crew together.</p></div><button onClick={()=>setShowGroup(false)}><X/></button></div><label className="modal-label">Group name<input value={groupName} onChange={e=>setGroupName(e.target.value)} placeholder="The gang" /></label><div className="modal-search"><Search size={18}/><input value={groupSearch} onChange={e=>searchPeople(e.target.value,true)} placeholder="Add people by username…"/></div>{groupPeople.map(p=><button className="person-row" key={p.id} onClick={()=>setSelectedPeople(s=>s.includes(p.id)?s.filter(x=>x!==p.id):[...s,p.id])}><Avatar profile={p}/><span><b>{p.display_name || p.username}</b><small>@{p.username}</small></span><span className={`select-dot ${selectedPeople.includes(p.id)?"checked":""}">{selectedPeople.includes(p.id)?"✓":"+"}</span></button>)}<div className="modal-bottom"><span>{selectedPeople.length} selected</span><button className="primary-btn" disabled={!groupName.trim() || !selectedPeople.length} onClick={createGroup}>Create group</button></div></div></div>}
+    {gifSearch.length>0 && <div className="gif-search-float"><div className="modal-head"><b>GIF search</b><button onClick={()=>{setGifSearch("");setGifResults([]);}}><X/></button></div><input value={gifSearch} onChange={e=>searchGifs(e.target.value)} placeholder="Search GIFs…"/><div className="gif-grid">{gifResults.map(g=><button key={g.url} onClick={()=>{sendMessage(g.url,"gif");setGifSearch("");setGifResults([]);}}><img src={g.preview || g.url} alt="GIF"/></button>)}</div></div>}
+    </main>;
+}
