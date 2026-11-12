@@ -618,7 +618,7 @@ export default function App() {
     const extensions: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif" };
     const extension = extensions[file.type];
     if (!extension) { setMessageError("Choose a JPG, PNG, WEBP or GIF image."); return; }
-    if (file.size > 8 * 1024 * 1024) { setMessageError("Chat images must be 8 MB or smaller."); return; }
+    if (file.size > 5 * 1024 * 1024) { setMessageError("Chat images must be 5 MB or smaller."); return; }
     setChatImageUploading(true);
     setMessageError("");
     try {
