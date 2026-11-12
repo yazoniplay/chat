@@ -631,3 +631,5 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent-light);o
 .ai-markdown a{color:var(--accent-light);text-decoration:underline}
 .ai-markdown strong{font-weight:750}.ai-markdown em{font-style:italic}
 .ai-attached-image{margin:5px 0 8px;max-width:min(100%,420px);max-height:360px;object-fit:contain;border-radius:12px;border:1px solid #ffffff18}
+
+.push-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}.push-actions .primary-btn,.push-actions .secondary-btn{white-space:nowrap}@media(max-width:560px){.push-actions{width:100%;flex-direction:column}.push-actions button{width:100%;justify-content:center}}
