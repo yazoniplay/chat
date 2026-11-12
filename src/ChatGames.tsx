@@ -8,7 +8,21 @@ type Member = { user_id: string; profiles?: { username?: string; display_name?: 
 type ChatGame = { id: string; conversation_id: string; game_type: string; status: "pending" | "active" | "finished" | "declined"; opponent_type: "human" | "ai"; created_by: string; white_player: string; black_player: string | null; fen: string; pgn: string; winner: string | null; created_at: string; updated_at: string };
 type Props = { conversationId: string; userId: string; members: Member[]; conversationName: string; onClose: () => void };
 
-const pieces: Record<string, string> = { wk:"♔", wq:"♕", wr:"♖", wb:"♗", wn:"♘", wp:"♙", bk:"♚", bq:"♛", br:"♜", bb:"♝", bn:"♞", bp:"♟︎" };
+const pieceNames: Record<string, string> = { k:'King', q:'Queen', r:'Rook', b:'Bishop', n:'Knight', p:'Pawn' };
+function ChessPiece({ color, type }: { color: 'w' | 'b'; type: string }) {
+  const fill = color === 'w' ? 'url(#ivory-piece)' : 'url(#obsidian-piece)';
+  const stroke = color === 'w' ? '#766b5d' : '#090d12';
+  const common = { fill, stroke, strokeWidth: 2.2, strokeLinejoin: 'round' as const, strokeLinecap: 'round' as const };
+  return <svg className={'chess-piece-svg ' + (color === 'w' ? 'piece-white' : 'piece-black')} viewBox='0 0 64 72' role='img' aria-label={(color === 'w' ? 'White ' : 'Black ') + pieceNames[type]}>
+    <defs><linearGradient id='ivory-piece' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stopColor='#fffef7'/><stop offset='.55' stopColor='#e7dfcf'/><stop offset='1' stopColor='#b9ad99'/></linearGradient><linearGradient id='obsidian-piece' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stopColor='#64748b'/><stop offset='.42' stopColor='#293548'/><stop offset='1' stopColor='#111827'/></linearGradient></defs>
+    {type === 'k' && <g {...common}><path d='M29 5h6v8h8v6h-8v6h-6v-6h-8v-6h8z'/><path d='M20 31c4-5 7-6 12-6s8 1 12 6l-3 9H23z'/><path d='M24 39h16l5 20H19z'/><path d='M15 60h34v6H15z'/></g>}
+    {type === 'q' && <g {...common}><path d='M12 16a4 4 0 1 1-8 0 4 4 0 0 1 8 0M34 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0M60 16a4 4 0 1 1-8 0 4 4 0 0 1 8 0'/><path d='M9 20l10 12 13-18 13 18 10-12-6 27H15z'/><path d='M18 49h28l4 11H14zM12 61h40v5H12z'/></g>}
+    {type === 'r' && <g {...common}><path d='M12 9h9v9h7V9h9v9h7V9h9v18H12z'/><path d='M17 28h30l-3 29H20z'/><path d='M14 58h36v7H14z'/></g>}
+    {type === 'b' && <g {...common}><path d='M32 7c-9 8-15 16-13 24 1 5 6 8 13 8s12-3 13-8C47 23 41 15 32 7z'/><path d='M24 38h16l7 19H17z'/><path d='M14 58h36v7H14z'/><path d='M38 16L26 31' fill='none' stroke={stroke} strokeWidth='3'/></g>}
+    {type === 'n' && <g {...common}><path d='M16 57c0-9 2-17 7-24l-4-13 13-13 5 12 12 8-5 11 5 19z'/><path d='M21 58h29v7H14v-7z'/><circle cx='38' cy='25' r='2.5' fill={color === 'w' ? '#332f2a' : '#f8fafc'} stroke='none'/><path d='M22 39l12-4' fill='none'/></g>}
+    {type === 'p' && <g {...common}><circle cx='32' cy='17' r='9'/><path d='M24 28c-5 7-7 16-7 29h30c0-13-2-22-7-29z'/><path d='M13 58h38v7H13z'/></g>}
+  </svg>;
+}
 const initialFen = new Chess().fen();
 const playerName = (members: Member[], id: string | null) => {
   if (!id) return "Tuffchat AI";
@@ -172,7 +186,7 @@ export default function ChatGames({ conversationId, userId, members, conversatio
   return <section className="chat-games">
     <div className="chat-games-top"><div className="chat-games-heading"><span className="chat-games-icon"><Gamepad2 size={19}/></span><div><b>Games</b><small>Play something together in {conversationName}</small></div></div><button className="chat-games-close" onClick={onClose} title="Close game panel"><X size={18}/></button></div>
     {!selectedGame || selectedGame.status === "declined" || (selectedGame.status === "finished" && !selectedId) ? <div className="chat-games-lobby">
-      <div className="chat-games-hero"><span>♟</span><h3>Take a little break.</h3><p>Challenge a friend or play a match against Tuffchat AI.</p></div>
+      <div className="chat-games-hero"><span className="chat-games-hero-piece"><ChessPiece color="w" type="q"/></span><h3>Take a little break.</h3><p>Challenge a friend or play a match against Tuffchat AI.</p></div>
       <button className="chat-game-choice" disabled={creating} onClick={() => void createGame("ai")}><span className="game-choice-icon ai"><Bot size={21}/></span><span><b>Play against AI</b><small>Start a private chess match</small></span><Swords size={18}/></button>
       <button className="chat-game-choice" disabled={creating || !opponents.length} onClick={() => setShowChallenge(true)}><span className="game-choice-icon human"><Users size={21}/></span><span><b>Challenge a friend</b><small>{opponents.length ? "Invite someone in this chat" : "Add a friend to this conversation first"}</small></span><Swords size={18}/></button>
       {games.length > 0 && <div className="chat-games-previous"><b>Recent games</b>{games.map(game => <button key={game.id} onClick={() => setSelectedId(game.id)}><span>♟ Chess · {game.status}</span><small>{new Date(game.updated_at).toLocaleDateString()}</small></button>)}</div>}
@@ -186,7 +200,7 @@ export default function ChatGames({ conversationId, userId, members, conversatio
             const selected = selectedSquare === square;
             const target = legalTargets.includes(square);
             return <button key={square} type="button" className={`chat-chess-square ${(rank+file)%2===0?"light":"dark"} ${selected?"selected":""} ${target?"target":""} ${piece?"occupied":""}`} onClick={() => chooseSquare(square)} aria-label={square + (piece ? " " + piece.color + " " + piece.type : "")}>
-              {piece && <span className={piece.color==="w"?"white-piece":"black-piece"}>{pieces[piece.color+piece.type]}</span>}
+              {piece && <span key={square + piece.color + piece.type} className={"chess-piece-wrap " + (piece.color === "w" ? "piece-white" : "piece-black")}><ChessPiece color={piece.color} type={piece.type}/></span>}
               {file===0 && <i>{8-rank}</i>}{rank===7 && <em>{"abcdefgh"[file]}</em>}
             </button>;
           }))}
