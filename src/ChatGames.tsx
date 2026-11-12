@@ -205,7 +205,7 @@ export default function ChatGames({ conversationId, userId, members, conversatio
             </button>;
           }))}
         </div>
-        {promotion && <div className="chat-promotion"><span>Promote pawn to</span>{(["q","r","b","n"] as const).map(type=><button key={type} onClick={()=>void saveMove(promotion.from,promotion.to,type)}>{pieces[(chess.turn()==="w"?"w":"b")+type]}</button>)}</div>}
+        {promotion && <div className="chat-promotion"><span>Promote pawn to</span>{(["q","r","b","n"] as const).map(type=><button key={type} onClick={()=>void saveMove(promotion.from,promotion.to,type)}><ChessPiece color={chess.turn()==="w"?"w":"b"} type={type}/></button>)}</div>}
         <div className="chat-chess-status">{aiThinking ? <><span className="chat-ai-pulse"/> Tuffchat AI is thinking…</> : statusText}</div>
         <div className="chat-chess-history"><b>Moves</b><span>{chess.history().length ? chess.history().map((move,index)=><i key={index}>{Math.floor(index/2)+1}{index%2===0?".":"…"} {move}</i>) : "The first move is yours."}</span></div>
         <div className="chat-chess-actions">{selectedGame.status==="active" && !isFinished && <button onClick={()=>void resign()} disabled={!isPlayerTurn || busy}>Resign</button>}{isFinished && <button onClick={()=>setSelectedId(null)}>Back to games</button>}</div>
