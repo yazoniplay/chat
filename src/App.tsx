@@ -158,6 +158,7 @@ export default function App() {
   const typingChannelRef = useRef<any>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const remoteTypingTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const aiHistoryRequestRef = useRef(0);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -353,16 +354,19 @@ export default function App() {
 
   useEffect(() => {
     if (!aiMode || !isSelfChat(conversations.find(c => c.id === activeId)) || !session?.user) {
+      aiHistoryRequestRef.current += 1;
       setAiMessages([]);
       setAiError("");
       return;
     }
     let live = true;
+    const requestId = ++aiHistoryRequestRef.current;
     supabase.from("personal_ai_messages").select("id,role,content,image_data,created_at").eq("user_id", session.user.id).order("created_at", { ascending: true }).limit(100)
       .then(({ data, error }) => {
-        if (!live) return;
+        // Ignore an older history load if a message has been sent since it began.
+        if (!live || requestId !== aiHistoryRequestRef.current) return;
         if (error) setAiError(error.message);
-        setAiMessages((data || []) as AiMessage[]);
+        if (data) setAiMessages(data as AiMessage[]);
       });
     return () => { live = false; };
   }, [aiMode, activeId, session?.user.id, conversations]);
@@ -603,6 +607,9 @@ export default function App() {
     if ((!prompt && !aiImageData) || !session?.user || aiSending) return;
 
     const imageData = aiImageData;
+    // Invalidate any history request started before this send, so stale data
+    // cannot overwrite the new message after the AI finishes typing.
+    const requestId = ++aiHistoryRequestRef.current;
     const optimisticMessage: AiMessage = {
       id: `pending-${Date.now()}`,
       role: "user",
@@ -643,11 +650,21 @@ export default function App() {
       .eq("user_id", session.user.id)
       .order("created_at", { ascending: true }).limit(100);
 
-    if (!loadError && data) {
-      setAiMessages(data as AiMessage[]);
-    } else {
-      setAiMessages(current => current.filter(message => message.id !== optimisticMessage.id));
-      setAiMessages(current => [...current, optimisticMessage]);
+    if (requestId === aiHistoryRequestRef.current) {
+      if (!loadError && data) {
+        const history = data as AiMessage[];
+        // Keep the optimistic user bubble if the database read is briefly stale.
+        const alreadySaved = history.some(message =>
+          message.role === "user" &&
+          message.content === optimisticMessage.content &&
+          Math.abs(new Date(message.created_at).getTime() - new Date(optimisticMessage.created_at).getTime()) < 60_000
+        );
+        setAiMessages(alreadySaved ? history : [...history, optimisticMessage]);
+      } else {
+        setAiMessages(current => current.some(message => message.id === optimisticMessage.id)
+          ? current
+          : [...current, optimisticMessage]);
+      }
     }
 
     if (requestError) setAiError(requestError);
