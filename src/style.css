@@ -143,3 +143,27 @@ button:focus-visible,input:focus-visible{outline:2px solid #b9a2ff;outline-offse
 .theme-light .account-danger-zone p{color:#886d75}
 .theme-light .signout-btn{background:#f0eaff;color:#6d4ac8;border-color:#d6c8fa}
 @media(max-width:540px){.sidebar-tabs{padding-left:12px;padding-right:12px}.delete-confirm{align-items:stretch}.delete-confirm button{flex:1}}
+
+
+/* Discord-style vertical Groups rail */
+.group-rail{width:76px;min-width:76px;height:100%;display:flex;flex-direction:column;align-items:center;gap:12px;padding:14px 0;background:#0b1018;border-right:1px solid #202636;overflow:hidden}
+.group-rail button{position:relative;width:48px;height:48px;min-height:48px;border:0;border-radius:50%;display:grid;place-items:center;transition:border-radius .16s ease,background .16s ease,color .16s ease,transform .16s ease}
+.rail-home{background:#20283a;color:#c8b6ff}
+.rail-home:hover,.rail-home.rail-selected{border-radius:16px;background:#9b7bfa;color:#171321}
+.rail-divider{width:32px;height:2px;border-radius:2px;background:#343044;flex:none}
+.group-rail-label{font-size:9px;font-weight:900;letter-spacing:1.1px;color:#a99bcf;margin:0 0 -4px}
+.group-rail-list{display:flex;flex-direction:column;align-items:center;gap:10px;width:100%;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;flex:1;padding:2px 0}
+.group-rail-list::-webkit-scrollbar{display:none}
+.group-rail-icon{background:#25283a;color:#e6dcff;font-size:17px;font-weight:800}
+.group-rail-icon:hover{border-radius:15px;background:#51416e;transform:translateY(-1px)}
+.group-rail-icon.rail-selected{border-radius:15px;background:#9b7bfa;color:#171321}
+.group-rail-icon.rail-selected:before,.rail-home.rail-selected:before{content:"";position:absolute;left:-14px;top:8px;width:4px;height:32px;border-radius:0 5px 5px 0;background:#cdbaff}
+.group-rail-add{background:#20283a;color:#bca7ff}
+.group-rail-add:hover{border-radius:15px;background:#9b7bfa;color:#171321}
+@media(max-width:760px){
+ .group-rail{width:64px;min-width:64px;padding-top:12px}
+ .group-rail button{width:44px;height:44px;min-height:44px}
+ .group-rail-hidden{display:none}
+ .sidebar{width:calc(100vw - 64px);min-width:0}
+}
+@media(max-width:420px){.group-rail{width:58px;min-width:58px}.sidebar{width:calc(100vw - 58px)}}
