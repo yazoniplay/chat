@@ -460,3 +460,18 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent-light);o
 .effect-style-choice{min-width:126px}
 @media(prefers-reduced-motion:reduce){.avatar-decoration-halo:after,.avatar-decoration-orbit:after,.avatar-decoration-crown:after,.avatar-decoration-diamond:after,.avatar-decoration-flame:after,.profile-effect-layer{animation:none!important}}
 @media(max-width:600px){.profile-mutuals{margin-left:16px;margin-right:16px}.profile-badges{gap:4px}.profile-badge{font-size:9px;padding:4px 7px}}
+
+
+/* Real avatar decoration frames from DecoProfile; Halo remains the original Tuffchat frame */
+.avatar-library-decoration{display:flex;align-items:center;justify-content:center;background:transparent!important;overflow:visible!important}
+.avatar-library-decoration>.avatar-image{display:none}
+.avatar-library-decoration>div:not(.avatar-status){display:block}
+.avatar-library-decoration img{display:block;max-width:none}
+.avatar-image{position:absolute;inset:0;border-radius:50%;background-position:center;background-size:cover;background-repeat:no-repeat}
+.avatar-decoration-halo .avatar-image{position:absolute;inset:0}
+.avatar-library-decoration .avatar-status{z-index:8}
+.avatar-decoration-choice{min-height:76px;min-width:108px;flex-direction:column;justify-content:center;gap:5px;padding:8px 10px}
+.avatar-decoration-choice .decoration-preview{width:48px;height:48px;flex:0 0 48px;display:flex;align-items:center;justify-content:center;overflow:visible}
+.avatar-decoration-choice .decoration-preview>div{width:48px!important;height:48px!important;transform:scale(.29);transform-origin:center center}
+.avatar-decoration-choice .decoration-preview-none{width:24px;height:24px;flex-basis:24px}
+.avatar-library-decoration .avatar-status{position:absolute}
