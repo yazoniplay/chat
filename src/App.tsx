@@ -124,16 +124,31 @@ export default function App() {
       setAuthError(selfChatError?.message || "Couldn't create your personal chat.");
     }
     const { data: memberships, error: membershipError } = await supabase.from("conversation_members").select("conversation_id").eq("user_id", session.user.id);
-    if (membershipError) {
-      setAuthError(membershipError.message);
-      return;
-    }
-    const ids = (memberships || []).map((m: {conversation_id:string}) => m.conversation_id);
+    if (membershipError) setAuthError(membershipError.message);
+
+    // Always include the ID returned by the self-chat RPC. This prevents a
+    // stale/filtered membership query from hiding the personal conversation.
+    const ids = [...new Set([
+      ...(memberships || []).map((m: {conversation_id:string}) => m.conversation_id),
+      ...(selfConversationId ? [String(selfConversationId)] : [])
+    ])];
     let rows: Conversation[] = [];
     if (ids.length) {
       const { data, error } = await supabase.from("conversations").select("id,name,is_group,created_at,conversation_members(user_id,profiles(id,username,display_name,avatar_url,banner_url,status_message,about_me,display_name_font,profile_gradient,profile_gradient_custom,profile_effect,avatar_decoration))").in("id", ids).order("created_at", { ascending: false });
       if (error) setAuthError(error.message);
       rows = (data || []) as unknown as Conversation[];
+    }
+
+    // If PostgREST still omits the row (for example, because of a relationship
+    // visibility issue), construct its sidebar entry from the verified RPC ID.
+    if (selfConversationId && !rows.some(row => row.id === String(selfConversationId))) {
+      rows.unshift({
+        id: String(selfConversationId),
+        name: "You",
+        is_group: false,
+        created_at: new Date().toISOString(),
+        conversation_members: [{ user_id: session.user.id, profiles: null }]
+      });
     }
     setConversations(rows);
     if (!activeId && selfConversationId) setActiveId(String(selfConversationId));
