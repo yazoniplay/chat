@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { supabase, isConfigured } from "./lib/supabase";
 import type { Session } from "@supabase/supabase-js";
 import { Search, MessageCircle, Users, Plus, Send, Smile, LogOut, Settings, Phone, Video, MoreVertical, ArrowLeft, X, CheckCheck, Image as ImageIcon, UserRound, Palette, Sun, Moon, Camera, Save, ShieldCheck, Trash2, Sparkles, Bot, Pencil, Forward, Reply } from "lucide-react";
@@ -23,6 +23,54 @@ function Avatar({ profile, label, size = "md" }: { profile?: Profile | null; lab
     {decoration?.kind === "library" && <img className="avatar-decoration-art" src={`https://drive.google.com/thumbnail?id=${decoration.fileId}&sz=w1000`} alt="" aria-hidden="true" />}
     {profile?.status_message && <span className="avatar-status" title={profile.status_message}>{profile.status_message}</span>}
   </div>;
+}
+
+function renderInlineMarkdown(value: string): ReactNode[] {
+  const pattern = /(\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|\*[^*\n]+\*|_[^_\n]+_|\x60[^\x60]+\x60|\[[^\]]+\]\(https?:\/\/[^\s)]+\))/g;
+  return value.split(pattern).filter(Boolean).map((part, index) => {
+    if ((part.startsWith("**") && part.endsWith("**")) || (part.startsWith("__") && part.endsWith("__"))) return <strong key={index}>{part.slice(2,-2)}</strong>;
+    if ((part.startsWith("*") && part.endsWith("*")) || (part.startsWith("_") && part.endsWith("_"))) return <em key={index}>{part.slice(1,-1)}</em>;
+    if (part.startsWith("~~") && part.endsWith("~~")) return <del key={index}>{part.slice(2,-2)}</del>;
+    if (part.startsWith("`") && part.endsWith("`")) return <code key={index}>{part.slice(1,-1)}</code>;
+    const link = /^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/.exec(part);
+    if (link) return <a key={index} href={link[2]} target="_blank" rel="noopener noreferrer">{link[1]}</a>;
+    return part;
+  });
+}
+
+function MarkdownMessage({ content }: { content: string }) {
+  const lines = content.replace(/\r/g, "").split("\n");
+  const blocks: ReactNode[] = [];
+  let paragraph: string[] = [];
+  let list: string[] = [];
+  let listType: "ul" | "ol" | null = null;
+  const flushParagraph = () => {
+    if (paragraph.length) { blocks.push(<p key={blocks.length}>{renderInlineMarkdown(paragraph.join(" "))}</p>); paragraph = []; }
+  };
+  const flushList = () => {
+    if (list.length && listType) {
+      const Tag = listType;
+      blocks.push(<Tag key={blocks.length}>{list.map((item, i) => <li key={i}>{renderInlineMarkdown(item)}</li>)}</Tag>);
+    }
+    list = []; listType = null;
+  };
+  lines.forEach(line => {
+    const trimmed = line.trim();
+    if (!trimmed) { flushParagraph(); flushList(); return; }
+    const heading = /^(#{1,3})\s+(.+)$/.exec(trimmed);
+    const bullet = /^(?:[-*+]\s+)(.+)$/.exec(trimmed);
+    const numbered = /^\d+[.)]\s+(.+)$/.exec(trimmed);
+    if (heading) { flushParagraph(); flushList(); const level=heading[1].length; const text=heading[2]; blocks.push(level===1?<h3 key={blocks.length}>{renderInlineMarkdown(text)}</h3>:level===2?<h4 key={blocks.length}>{renderInlineMarkdown(text)}</h4>:<h5 key={blocks.length}>{renderInlineMarkdown(text)}</h5>); return; }
+    if (bullet || numbered) {
+      flushParagraph(); const nextType = bullet ? "ul" : "ol";
+      if (listType && listType !== nextType) flushList();
+      listType = nextType; list.push((bullet || numbered)![1]); return;
+    }
+    if (trimmed.startsWith("> ")) { flushParagraph(); flushList(); blocks.push(<blockquote key={blocks.length}>{renderInlineMarkdown(trimmed.slice(2))}</blockquote>); return; }
+    flushList(); paragraph.push(trimmed);
+  });
+  flushParagraph(); flushList();
+  return <div className="ai-markdown">{blocks}</div>;
 }
 
 function TypingIndicator({ label }: { label: string }) {
@@ -564,7 +612,7 @@ export default function App() {
       setAiImageData(imageData);
     } else {
       const { data, error: loadError } = await supabase.from("personal_ai_messages")
-        .select("id,role,content,created_at")
+        .select("id,role,content,image_data,created_at")
         .eq("user_id", session.user.id)
         .order("created_at", { ascending: true }).limit(100);
       if (loadError) setAiError(loadError.message);
@@ -664,7 +712,7 @@ export default function App() {
     </aside>
     <section className={`chat-panel ${mobileChat ? "chat-panel-mobile" : ""}`}>
       {active ? <><header className="chat-header"><button className="mobile-back" onClick={()=>setMobileChat(false)}><ArrowLeft/></button><button className="avatar-open" onClick={()=>{if(activePerson)setViewedProfile(activePerson);}} aria-label={isSelfChat(active) ? "View your profile" : `View ${activeTitle} profile`}><Avatar profile={activePerson} label={activeTitle}/></button><div className="chat-heading"><b className={!active?.is_group && activePerson ? `profile-name-font-${activePerson.display_name_font || "modern"}` : undefined}>{activeTitle}</b><span>{aiMode && isSelfChat(active) ? "AI assistant · powered by Gemini" : isSelfChat(active) ? "Only you can see this chat" : active.is_group ? `${activeMembers.length} members` : "Direct message"}</span></div><div className="chat-header-actions">{isSelfChat(active) && <button className={aiMode ? "active" : ""} title={aiMode ? "Back to your notes" : "Open AI Chat"} onClick={()=>{setAiMode(v=>!v);setAiError("");}}><Sparkles size={18}/></button>}<button title="Voice call"><Phone size={18}/></button><button title="Video call"><Video size={19}/></button><button title="More"><MoreVertical size={19}/></button></div></header>
-      <div className={`message-area ${aiMode ? "ai-message-area" : ""}`}>{aiMode && isSelfChat(active) ? <>{aiImageData && <div className="ai-image-pending"><img src={aiImageData} alt="Ready to send"/><button type="button" onClick={()=>setAiImageData(null)}><X size={14}/></button></div>}<div className="ai-welcome"><div className="ai-welcome-icon"><Sparkles size={22}/></div><b>Your Tuffchat AI</b><span>Ask anything. Your AI conversation is private and separate from your notes.</span></div>{aiMessages.map(m=><div key={m.id} className={`ai-message-line ${m.role==="user"?"mine":"assistant"}`}><div className="ai-message-bubble">{m.role==="assistant" && <b><Bot size={14}/> Tuffchat AI</b>}{m.image_data && <img className="ai-attached-image" src={m.image_data} alt="Image sent to Tuffchat AI"/>}{m.content && <span>{m.content}</span>}<small>{new Date(m.created_at).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</small></div></div>)}{aiSending && <TypingIndicator label="Tuffchat AI is typing"/>}<div ref={bottomRef}/>{aiError && <div className="ai-error">{aiError}</div>}</> : <><div className="date-chip">TODAY</div>{messages.map(m=>{const mine=m.sender_id===session.user.id; const sender=activeMembers.find(x=>x.user_id===m.sender_id)?.profiles; const replied=messages.find(x=>x.id===m.reply_to); return <div key={m.id} className={`message-line ${mine?"mine":""}`}>{!mine && active.is_group && <Avatar profile={sender} size="sm"/>}<div className="message-bubble">{!mine && active.is_group && <b className={`sender-name profile-name-font-${sender?.display_name_font || "modern"}`}>{sender?.display_name || sender?.username || "Member"}</b>}{m.reply_to && <div className="message-reply-preview"><b>↪ Replying to {replied?.sender_id===session.user.id ? "you" : replied ? (activeMembers.find(x=>x.user_id===replied.sender_id)?.profiles?.display_name || "message") : "a message"}</b><span>{replied?.content || "Original message"}</span></div>}{m.forwarded_from && <div className="message-forwarded-label">↗ Forwarded</div>}{editingMessageId===m.id ? <form className="message-edit-form" onSubmit={e=>{e.preventDefault();saveMessageEdit(m.id);}}><input autoFocus value={editDraft} onChange={e=>setEditDraft(e.target.value)}/><button type="submit">Save</button><button type="button" onClick={()=>setEditingMessageId(null)}>Cancel</button></form> : <>{m.kind==="gif" ? <img className="gif-message" src={m.content} alt="GIF"/> : <span>{m.content}</span>}</>}<small>{new Date(m.created_at).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})} {m.edited_at && <i>edited</i>} {mine && <CheckCheck size={14}/>}</small><div className="message-actions"><button type="button" onClick={()=>startReply(m)}><Reply size={13}/> Reply</button><button type="button" onClick={()=>setForwardingMessage(m)}><Forward size={13}/> Forward</button>{mine && <button type="button" onClick={()=>{setEditingMessageId(m.id);setEditDraft(m.content);}}><Pencil size={13}/> Edit</button>}{mine && <button type="button" className="message-delete-action" onClick={()=>deleteMessage(m.id)}><Trash2 size={13}/> Delete</button>}</div></div></div>;})}{typingLabel && !isSelfChat(active) && <TypingIndicator label={typingLabel}/>}<div ref={bottomRef}/>{!messages.length && <div className="first-message"><div>{isSelfChat(active) ? "📝" : "👋"}</div><b>{isSelfChat(active) ? "Your own little corner." : "This is the start of something good."}</b><span>{isSelfChat(active) ? "Save notes, links, ideas and messages here." : "Send a message to kick things off."}</span></div>}</>}</div>
+      <div className={`message-area ${aiMode ? "ai-message-area" : ""}`}>{aiMode && isSelfChat(active) ? <>{aiImageData && <div className="ai-image-pending"><img src={aiImageData} alt="Ready to send"/><button type="button" onClick={()=>setAiImageData(null)}><X size={14}/></button></div>}<div className="ai-welcome"><div className="ai-welcome-icon"><Sparkles size={22}/></div><b>Your Tuffchat AI</b><span>Ask anything. Your AI conversation is private and separate from your notes.</span></div>{aiMessages.map(m=><div key={m.id} className={`ai-message-line ${m.role==="user"?"mine":"assistant"}`}><div className="ai-message-bubble">{m.role==="assistant" && <b><Bot size={14}/> Tuffchat AI</b>}{m.image_data && <img className="ai-attached-image" src={m.image_data} alt="Image sent to Tuffchat AI"/>}{m.content && <MarkdownMessage content={m.content}/>}<small>{new Date(m.created_at).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</small></div></div>)}{aiSending && <TypingIndicator label="Tuffchat AI is typing"/>}<div ref={bottomRef}/>{aiError && <div className="ai-error">{aiError}</div>}</> : <><div className="date-chip">TODAY</div>{messages.map(m=>{const mine=m.sender_id===session.user.id; const sender=activeMembers.find(x=>x.user_id===m.sender_id)?.profiles; const replied=messages.find(x=>x.id===m.reply_to); return <div key={m.id} className={`message-line ${mine?"mine":""}`}>{!mine && active.is_group && <Avatar profile={sender} size="sm"/>}<div className="message-bubble">{!mine && active.is_group && <b className={`sender-name profile-name-font-${sender?.display_name_font || "modern"}`}>{sender?.display_name || sender?.username || "Member"}</b>}{m.reply_to && <div className="message-reply-preview"><b>↪ Replying to {replied?.sender_id===session.user.id ? "you" : replied ? (activeMembers.find(x=>x.user_id===replied.sender_id)?.profiles?.display_name || "message") : "a message"}</b><span>{replied?.content || "Original message"}</span></div>}{m.forwarded_from && <div className="message-forwarded-label">↗ Forwarded</div>}{editingMessageId===m.id ? <form className="message-edit-form" onSubmit={e=>{e.preventDefault();saveMessageEdit(m.id);}}><input autoFocus value={editDraft} onChange={e=>setEditDraft(e.target.value)}/><button type="submit">Save</button><button type="button" onClick={()=>setEditingMessageId(null)}>Cancel</button></form> : <>{m.kind==="gif" ? <img className="gif-message" src={m.content} alt="GIF"/> : <span>{m.content}</span>}</>}<small>{new Date(m.created_at).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})} {m.edited_at && <i>edited</i>} {mine && <CheckCheck size={14}/>}</small><div className="message-actions"><button type="button" onClick={()=>startReply(m)}><Reply size={13}/> Reply</button><button type="button" onClick={()=>setForwardingMessage(m)}><Forward size={13}/> Forward</button>{mine && <button type="button" onClick={()=>{setEditingMessageId(m.id);setEditDraft(m.content);}}><Pencil size={13}/> Edit</button>}{mine && <button type="button" className="message-delete-action" onClick={()=>deleteMessage(m.id)}><Trash2 size={13}/> Delete</button>}</div></div></div>;})}{typingLabel && !isSelfChat(active) && <TypingIndicator label={typingLabel}/>}<div ref={bottomRef}/>{!messages.length && <div className="first-message"><div>{isSelfChat(active) ? "📝" : "👋"}</div><b>{isSelfChat(active) ? "Your own little corner." : "This is the start of something good."}</b><span>{isSelfChat(active) ? "Save notes, links, ideas and messages here." : "Send a message to kick things off."}</span></div>}</>}</div>
       {messageError && !aiMode && <div className="message-error">{messageError}</div>}
       {!aiMode && emojiOpen && <div className="emoji-tray">{EMOJIS.map(e=><button key={e} onClick={()=>setDraft(d=>d+e)}>{e}</button>)}</div>}
       {replyingTo && !aiMode && <div className="reply-composer-preview"><span><b>Replying to</b> {replyingTo.sender_id===session.user.id ? "yourself" : (activeMembers.find(x=>x.user_id===replyingTo.sender_id)?.profiles?.display_name || "message")} · {replyingTo.content}</span><button type="button" onClick={()=>setReplyingTo(null)}><X size={15}/></button></div>}
