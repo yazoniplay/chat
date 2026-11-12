@@ -569,7 +569,6 @@ export default function App() {
         .order("created_at", { ascending: true }).limit(100);
       if (loadError) setAiError(loadError.message);
       setAiMessages((data || []) as AiMessage[]);
-      void supabase.functions.invoke("tuffchat-push", { body: { event: "ai_done" } });
     }
     setAiSending(false);
   }
