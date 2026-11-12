@@ -183,3 +183,14 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent-light);o
 .profile-banner{height:150px;background:linear-gradient(120deg,#352c50,#7558a8 52%,#d59ac0);background-size:cover;background-position:center}.profile-card-main{display:flex;align-items:flex-end;gap:14px;padding:0 22px;margin-top:-31px}.profile-card-main .avatar{width:76px;height:76px;border:5px solid #17252c;font-size:25px}.profile-card-identity{padding:0 0 5px;min-width:0}.profile-card-identity h2{font-size:20px;margin:0 0 3px;overflow-wrap:anywhere}.profile-card-identity span{font-size:12px;color:#9baab1}
 .profile-status-full{margin:16px 22px 0;padding:11px 13px;border-radius:10px;background:#26343d;color:#d9d0f5;font-size:13px;overflow-wrap:anywhere}.profile-card-footer{display:flex;justify-content:flex-end;padding:20px 22px}.theme-light .profile-card{background:#fff;color:#24343b;border-color:#e1e8eb}.theme-light .profile-card-main .avatar{border-color:#fff}.theme-light .profile-card-identity span{color:#71828a}.theme-light .profile-status-full{background:#f0eaff;color:#6249a0}
 @media(max-width:540px){.profile-card{width:100%;max-width:420px}.profile-banner{height:120px}.profile-card-main{padding:0 16px;gap:11px}.profile-card-footer{padding:16px}.banner-preview{height:92px}.avatar-status{max-width:90px;font-size:8px}}
+/* Larger status bubbles and profile biography */
+.avatar-status{right:-13px;bottom:-8px;max-width:160px;padding:5px 10px;font-size:11px;line-height:1.25;border-width:2px}
+.profile-about{margin:16px 22px 0;padding:14px 15px;border-radius:12px;background:#202f38;color:#e9edef}
+.profile-about h3{margin:0 0 7px;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#b9a2ff}
+.profile-about p{margin:0;font-size:14px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere;color:#dce4e8}
+.settings-field textarea{width:100%;min-height:96px;resize:vertical;border:1px solid var(--border,#34464f);border-radius:10px;background:var(--input-bg,#111d24);color:inherit;padding:11px 12px;font:inherit;line-height:1.45;outline:none}
+.settings-field textarea:focus{border-color:var(--accent)}
+.theme-light .profile-about{background:#f5f1ff;color:#26343b}
+.theme-light .profile-about h3{color:#7558c7}
+.theme-light .profile-about p{color:#465761}
+@media(max-width:540px){.avatar-status{max-width:118px;font-size:10px;padding:4px 8px}.profile-about{margin:14px 16px 0}}
