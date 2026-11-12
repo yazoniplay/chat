@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { supabase, isConfigured } from "./lib/supabase";
 import type { Session } from "@supabase/supabase-js";
-import { Search, MessageCircle, Users, Plus, Send, Smile, LogOut, Settings, Phone, Video, MoreVertical, ArrowLeft, X, CheckCheck, Image as ImageIcon } from "lucide-react";
+import { Search, MessageCircle, Users, Plus, Send, Smile, LogOut, Settings, Phone, Video, MoreVertical, ArrowLeft, X, CheckCheck, Image as ImageIcon, UserRound, Palette, Sun, Moon, Camera, Save, ShieldCheck, SlidersHorizontal } from "lucide-react";
 
 type Profile = { id: string; username: string; display_name: string; avatar_url: string | null };
 type Conversation = { id: string; name: string | null; is_group: boolean; created_at: string; conversation_members?: { user_id: string; profiles: Profile | null }[] };
@@ -40,7 +40,19 @@ export default function App() {
   const [sending, setSending] = useState(false);
   const [gifSearch, setGifSearch] = useState("");
   const [gifResults, setGifResults] = useState<{url:string; preview:string}[]>([]);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [editUsername, setEditUsername] = useState("");
+  const [editDisplayName, setEditDisplayName] = useState("");
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileSaveError, setProfileSaveError] = useState("");
+  const [theme, setTheme] = useState<"dark" | "light">(() => (localStorage.getItem("tuffchat-theme") as "dark" | "light") || "dark");
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("tuffchat-theme", theme);
+  }, [theme]);
 
   useEffect(() => {
     if (!isConfigured) { setLoading(false); return; }
@@ -89,6 +101,47 @@ export default function App() {
   }, [activeId]);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+
+  function openSettings() {
+    setEditUsername(profile?.username || "");
+    setEditDisplayName(profile?.display_name || "");
+    setAvatarFile(null);
+    setProfileSaveError("");
+    setSettingsOpen(true);
+  }
+
+  async function saveProfile(e: FormEvent) {
+    e.preventDefault();
+    if (!session?.user || !profile) return;
+    const cleanUsername = editUsername.trim().toLowerCase();
+    const cleanDisplayName = editDisplayName.trim();
+    if (!/^[a-z0-9_]{3,20}$/.test(cleanUsername)) {
+      setProfileSaveError("Username must be 3–20 characters: letters, numbers or underscores.");
+      return;
+    }
+    if (!cleanDisplayName) {
+      setProfileSaveError("Please enter a display name.");
+      return;
+    }
+    setProfileSaving(true);
+    setProfileSaveError("");
+    let avatarUrl = profile.avatar_url;
+    if (avatarFile) {
+      const extension = avatarFile.name.split(".").pop()?.toLowerCase() || "jpg";
+      const path = `${session.user.id}/${Date.now()}.${extension}`;
+      const { error: uploadError } = await supabase.storage.from("avatars").upload(path, avatarFile, { upsert: true, contentType: avatarFile.type });
+      if (uploadError) {
+        setProfileSaveError(`Photo upload failed: ${uploadError.message}`);
+        setProfileSaving(false);
+        return;
+      }
+      avatarUrl = supabase.storage.from("avatars").getPublicUrl(path).data.publicUrl;
+    }
+    const { data, error } = await supabase.from("profiles").update({ username: cleanUsername, display_name: cleanDisplayName, avatar_url: avatarUrl }).eq("id", session.user.id).select("id,username,display_name,avatar_url").single();
+    if (error) setProfileSaveError(error.code === "23505" ? "That username is already taken. Try another one." : error.message);
+    else { setProfile(data as Profile); setSettingsOpen(false); setAvatarFile(null); }
+    setProfileSaving(false);
+  }
 
   async function authenticate(e: FormEvent) {
     e.preventDefault(); setAuthError("");
@@ -164,10 +217,11 @@ export default function App() {
 
   if (!session) return <div className="auth-screen"><div className="auth-art"><div className="brand-mark">t</div><div><span className="eyebrow">YOUR PEOPLE. YOUR PLACE.</span><h1>Good chats.<br/><em>Better days.</em></h1><p>Bring your favourite people together, wherever life takes you.</p></div><div className="art-bubbles"><span>hey 👋</span><span>you coming? 🔥</span><span>always 😂</span></div></div><form className="auth-card" onSubmit={authenticate}><div className="auth-brand"><div className="brand-mark">t</div><b>Tuffchat</b></div><h2>{authMode === "login" ? "Welcome back" : "Make it official"}</h2><p className="muted">{authMode === "login" ? "Sign in to catch up with your people." : "Create an account and claim your username."}</p>{authMode === "signup" && <><label>Username<input value={username} onChange={e=>setUsername(e.target.value)} placeholder="your_username" required /></label><label>Display name<input value={displayName} onChange={e=>setDisplayName(e.target.value)} placeholder="What should people call you?" /></label></>}<label>Email<input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com" required /></label><label>Password<input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="At least 6 characters" minLength={6} required /></label>{authError && <div className="auth-message">{authError}</div>}<button className="primary-btn full" type="submit">{authMode === "login" ? "Sign in" : "Create account"}</button><p className="switch-auth">{authMode === "login" ? "New around here?" : "Already have an account?"} <button type="button" onClick={()=>{setAuthMode(authMode==="login"?"signup":"login");setAuthError("");}}>{authMode === "login" ? "Create account" : "Sign in"}</button></p></form></div>;
 
-  return <main className="app-shell">
+  return <main className={`app-shell theme-${theme}`}>
+    {settingsOpen && <div className="modal-backdrop settings-backdrop" onClick={()=>setSettingsOpen(false)}><form className="settings-modal" onSubmit={saveProfile} onClick={e=>e.stopPropagation()}><div className="settings-top"><div><span className="settings-kicker">YOUR ACCOUNT</span><h2>Settings</h2><p>Make Tuffchat feel like yours.</p></div><button type="button" className="icon-close" onClick={()=>setSettingsOpen(false)} aria-label="Close settings"><X size={20}/></button></div><div className="settings-section-title"><UserRound size={16}/> Profile</div><div className="avatar-editor"><div className="avatar-preview">{avatarFile ? <img src={URL.createObjectURL(avatarFile)} alt="Profile preview"/> : <Avatar profile={profile} size="lg"/>}</div><label className="upload-avatar"><Camera size={15}/> Change photo<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={e=>setAvatarFile(e.target.files?.[0] || null)}/></label><span className="field-hint">JPG, PNG, WEBP or GIF. Max 5 MB.</span></div><label className="settings-field"><span>Username</span><div className="username-input"><span>@</span><input value={editUsername} onChange={e=>setEditUsername(e.target.value)} maxLength={20} autoComplete="username" /></div><small>3–20 characters · letters, numbers and _</small></label><label className="settings-field"><span>Display name</span><input value={editDisplayName} onChange={e=>setEditDisplayName(e.target.value)} maxLength={40} placeholder="Your name" /></label><div className="settings-divider"/><div className="settings-section-title"><Palette size={16}/> Appearance</div><div className="theme-choice"><button type="button" className={theme==="light"?"theme-option active":"theme-option"} onClick={()=>setTheme("light")}><Sun size={19}/><span><b>Light mode</b><small>Bright and clean</small></span>{theme==="light" && <CheckCheck size={17}/>}</button><button type="button" className={theme==="dark"?"theme-option active":"theme-option"} onClick={()=>setTheme("dark")}><Moon size={19}/><span><b>Dark mode</b><small>Easy on the eyes</small></span>{theme==="dark" && <CheckCheck size={17}/>}</button></div><div className="settings-footnote"><ShieldCheck size={15}/> Your profile changes are saved to your Tuffchat account.</div>{profileSaveError && <div className="settings-error">{profileSaveError}</div>}<div className="settings-actions"><button type="button" className="cancel-btn" onClick={()=>setSettingsOpen(false)}>Cancel</button><button className="primary-btn" type="submit" disabled={profileSaving}><Save size={16}/>{profileSaving?"Saving…":"Save changes"}</button></div></form></div>
     <aside className={`sidebar ${mobileChat ? "sidebar-hidden" : ""}`}>
       <header className="side-header"><div className="brand-lockup"><div className="brand-mark small">t</div><b>tuffchat</b></div><div className="side-actions"><button title="New group" onClick={()=>setShowGroup(true)}><Users size={19}/></button><button title="Find people" onClick={()=>setShowPeople(true)}><Plus size={21}/></button><button title="Sign out" onClick={()=>supabase.auth.signOut()}><LogOut size={18}/></button></div></header>
-      <div className="profile-strip"><Avatar profile={profile} /><div className="profile-meta"><b>{profile?.display_name || profile?.username}</b><span>@{profile?.username}</span></div><button title="Settings"><Settings size={17}/></button></div>
+      <div className="profile-strip"><Avatar profile={profile} /><div className="profile-meta"><b>{profile?.display_name || profile?.username}</b><span>@{profile?.username}</span></div><button title="Settings" onClick={openSettings}><Settings size={17}/></button></div>
       <div className="search-box"><Search size={17}/><input placeholder="Search or start a new chat" value={search} onChange={e=>searchPeople(e.target.value)} /><button onClick={()=>setShowPeople(true)} title="Find people"><Plus size={17}/></button></div>
       {search.length >= 2 && <div className="search-results">{people.map(p=><button className="person-row" key={p.id} onClick={()=>startDirect(p)}><Avatar profile={p}/><span><b>{p.display_name || p.username}</b><small>@{p.username}</small></span><MessageCircle size={17}/></button>)}</div>}
       <div className="chat-list-label">MESSAGES <span>{conversations.length}</span></div>
