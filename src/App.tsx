@@ -106,7 +106,9 @@ export default function App() {
   const [showGroup, setShowGroup] = useState(false);
   const [groupName, setGroupName] = useState("");
   const [groupSearch, setGroupSearch] = useState("");
-  const [groupPeople, setGroupPeople] = useState<Profile[]>([]);\n  const [groupError, setGroupError] = useState("");\n  const [groupCreating, setGroupCreating] = useState(false);
+  const [groupPeople, setGroupPeople] = useState<Profile[]>([]);
+  const [groupError, setGroupError] = useState("");
+  const [groupCreating, setGroupCreating] = useState(false);
   const [selectedPeople, setSelectedPeople] = useState<string[]>([]);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [gifTab, setGifTab] = useState(false);
@@ -400,7 +402,11 @@ export default function App() {
         }
       });
     typingChannelRef.current = channel;
-    channel.subscribe((status, error) => {\n      if (!live) return;\n      if (status === "SUBSCRIBED") setMessageError("");\n      else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") setMessageError(error?.message || "Live message connection failed. Refresh the chat to reconnect.");\n    });
+    channel.subscribe((status, error) => {
+      if (!live) return;
+      if (status === "SUBSCRIBED") setMessageError("");
+      else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") setMessageError(error?.message || "Live message connection failed. Refresh the chat to reconnect.");
+    });
     return () => {
       live = false;
       typingChannelRef.current = null;
