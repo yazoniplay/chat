@@ -730,3 +730,44 @@ body{top:0!important}
 .theme-light .group-details-modal .modal-label textarea{background:#f6f8f9;color:#26363d;border-color:#dce5e8}
 .theme-light .group-title-open{color:#26363d}
 .theme-light .deleted-message{color:#78868c}
+
+
+/* Snapchat-inspired group profile sheet */
+.group-profile-backdrop{align-items:center}
+.group-profile-modal{width:min(520px,calc(100vw - 28px));max-height:min(86vh,760px);overflow:auto;padding:0;border-radius:22px;background:#18252c;border:1px solid #ffffff17;box-shadow:0 24px 90px #0009}
+.group-profile-topbar{height:54px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid #ffffff12;color:#aebdc4;font-size:10px;font-weight:850;letter-spacing:1.5px}
+.group-profile-topbar button{width:34px;height:34px;display:grid;place-items:center;border:0;border-radius:50%;background:#ffffff0c;color:#e9edef;cursor:pointer}
+.group-profile-topbar button:hover{background:#ffffff19}
+.group-profile-hero{display:flex;align-items:center;flex-direction:column;padding:26px 18px 22px;background:linear-gradient(180deg,#293b43,#1c2a31)}
+.group-profile-icon{width:78px;height:78px;display:grid;place-items:center;border-radius:28px;background:linear-gradient(145deg,#9276ed,#d18bb5);color:white;box-shadow:0 10px 28px #0004}
+.group-profile-hero h2{margin:14px 0 3px;font-size:22px;font-weight:850}
+.group-profile-hero p{margin:0;color:#aebdc4;font-size:12px}
+.group-profile-section{margin:14px 14px 0;padding:16px;border:1px solid #ffffff12;border-radius:16px;background:#202f37}
+.group-profile-section-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px;color:#b9c5ca;font-size:10px;font-weight:850;letter-spacing:1.1px}
+.group-profile-section-title span{color:var(--accent-light);font-size:9px}
+.group-profile-section textarea{display:block;width:100%;box-sizing:border-box;min-height:82px;resize:vertical;border:1px solid #ffffff1b;border-radius:11px;background:#142128;color:#eef3f5;padding:12px;font:inherit;font-size:13px;line-height:1.5;outline:none}
+.group-profile-section textarea:focus{border-color:var(--accent)}
+.group-profile-section .group-description-footer{margin-top:10px}
+.group-profile-section .group-description-footer>span{color:#93a3aa;font-size:10px}
+.group-profile-members-section{padding-bottom:8px}
+.group-detail-members{max-height:260px;overflow:auto}
+.group-profile-member{display:flex;align-items:center;gap:11px;padding:9px 2px;border-bottom:1px solid #ffffff0c}
+.group-profile-member:last-child{border-bottom:0}
+.group-profile-member>span:nth-child(2){display:flex;flex-direction:column;gap:3px;min-width:0}
+.group-profile-member b{font-size:12px;color:#edf2f4}
+.group-profile-member small{font-size:10px;color:#91a2aa}
+.group-profile-bottom-note{padding:16px 20px 19px;text-align:center;color:#81929a;font-size:10px}
+.chat-typing-status{display:block;color:var(--accent-light)!important;font-size:10px!important;font-weight:700}
+.theme-light .group-profile-modal{background:#f7f9fa;border-color:#dce5e8}
+.theme-light .group-profile-topbar{color:#687a82;border-color:#e6ecee}
+.theme-light .group-profile-topbar button{background:#eaf0f2;color:#26363d}
+.theme-light .group-profile-hero{background:linear-gradient(180deg,#e6e3f8,#f2eaf2)}
+.theme-light .group-profile-hero h2{color:#26363d}
+.theme-light .group-profile-hero p{color:#667981}
+.theme-light .group-profile-section{background:#fff;border-color:#e0e8eb}
+.theme-light .group-profile-section-title{color:#62757d}
+.theme-light .group-profile-section textarea{background:#f5f8f9;color:#26363d;border-color:#dce5e8}
+.theme-light .group-profile-member{border-color:#edf1f2}
+.theme-light .group-profile-member b{color:#26363d}
+.theme-light .group-profile-member small,.theme-light .group-profile-bottom-note{color:#75868d}
+@media(max-width:560px){.group-profile-backdrop{align-items:flex-end;padding:0}.group-profile-modal{width:100%;max-height:90vh;border-radius:22px 22px 0 0}.group-profile-hero{padding-top:22px}}
