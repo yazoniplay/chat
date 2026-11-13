@@ -701,3 +701,15 @@ body{top:0!important}
 .group-list-heading{margin-top:4px}
 .group-list-avatar{background:#302747;color:#d7c9ff;border-radius:14px}
 .group-empty-list{height:58px;min-height:58px}
+
+/* Discoverable friend suggestions and group management actions */
+.group-manage-wrap{position:relative;display:flex;align-items:center}
+.group-manage-menu{position:absolute;z-index:50;right:0;top:calc(100% + 10px);width:210px;padding:8px;border:1px solid #ffffff20;border-radius:13px;background:#202d34;box-shadow:0 16px 44px #0008;display:flex;flex-direction:column;gap:5px}
+.group-manage-menu>b{padding:8px 9px 5px;color:#dce6e9;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.group-manage-menu>button{display:flex;align-items:center;gap:9px;width:100%;padding:10px;border:0;border-radius:8px;background:transparent;color:#dce6e9;text-align:left;font-size:12px;cursor:pointer}
+.group-manage-menu>button:hover{background:#ffffff12}
+.group-manage-menu>button.group-delete-option{color:#ff9caa}
+.group-manage-menu>button:disabled{opacity:.5;cursor:wait}
+.theme-light .group-manage-menu{background:#fff;border-color:#dce5e8;box-shadow:0 16px 44px #1b293022}
+.theme-light .group-manage-menu>b,.theme-light .group-manage-menu>button{color:#26363d}
+.theme-light .group-manage-menu>button.group-delete-option{color:#b44c5d}
