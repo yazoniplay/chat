@@ -680,3 +680,19 @@ body{top:0!important}
 .chat-image-message{display:block;max-width:min(360px,65vw);max-height:360px;object-fit:contain;border-radius:12px;margin:4px 0 8px}
 .message-bubble:has(.chat-image-message){padding:8px 10px}
 @media(max-width:760px){.media-picker{left:12px;bottom:72px}.chat-image-message{max-width:min(280px,70vw);max-height:300px}}
+
+/* Friends and friend requests */
+.friend-search-row{gap:8px;padding:9px 6px}
+.friend-person-open{display:flex;align-items:center;gap:10px;flex:1;min-width:0;text-align:left;border:0;background:transparent;color:inherit;padding:0}
+.friend-action-btn,.friend-reject-btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;border:1px solid #3b5059;border-radius:8px;background:#263840;color:#dce8eb;padding:8px 10px;font-size:11px;font-weight:700;white-space:nowrap}
+.friend-action-btn:hover{border-color:var(--accent);color:var(--accent)}
+.friend-reject-btn{padding:8px;color:#e3a0a8}
+.friend-status{display:inline-flex;align-items:center;gap:5px;color:#aab8bf;font-size:11px;white-space:nowrap}
+.friends-section-title{display:flex;justify-content:space-between;align-items:center;margin:20px 0 6px;color:var(--accent);font-size:10px;font-weight:800;letter-spacing:1.2px}
+.friends-section-title span{color:#8d9ca3}
+.compact-hint{padding:13px 4px}
+.profile-card-footer{gap:8px;flex-wrap:wrap}
+.profile-card-footer .secondary-btn{border:1px solid #ffffff55;border-radius:9px;background:#17252c;color:#e9edef;padding:11px 14px;font-weight:700;display:inline-flex;align-items:center;gap:7px}
+.theme-light .friend-action-btn{background:#f2f6f7;color:#26363d;border-color:#dce5e8}
+.theme-light .friend-reject-btn{background:#fff6f6;color:#a34b59;border-color:#f0d7da}
+.theme-light .friend-status{color:#71828a}
