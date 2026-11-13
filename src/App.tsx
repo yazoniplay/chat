@@ -328,7 +328,7 @@ export default function App() {
       setMessageError(`Couldn't load chat members: ${profilesError.message}`);
       return false;
     }
-    const profileById = new Map(((profileRows || []) as Profile[]).map(person => [person.id, person]));
+    const profileById = new Map<string, Profile>(((profileRows || []) as Profile[]).map(person => [person.id, person] as const));
     const enriched = ((rows || []) as Omit<Conversation, "conversation_members">[]).map(row => ({
       ...row,
       conversation_members: memberRows
