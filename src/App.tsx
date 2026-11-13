@@ -607,11 +607,11 @@ export default function App() {
   const relationshipFor = (personId: string) => friendRequests.find(r => (r.requester_id === personId || r.addressee_id === personId) && r.status !== "rejected");
   async function sendFriendRequest(person: Profile) {
     if (!session?.user || friendActionBusy) return;
-    setFriendActionBusy(person.id); setAuthError("");
+    setFriendActionBusy(person.id); setPeopleError("");
     const rejected = friendRequests.find(r => ((r.requester_id === session.user.id && r.addressee_id === person.id) || (r.requester_id === person.id && r.addressee_id === session.user.id)) && r.status === "rejected");
     if (rejected) await supabase.from("friend_requests").delete().eq("id", rejected.id);
     const { error } = await supabase.from("friend_requests").insert({ requester_id: session.user.id, addressee_id: person.id });
-    if (error) setAuthError(error.code === "23505" ? "A friend request or friendship already exists." : error.message);
+    if (error) setPeopleError(error.code === "23505" ? "A friend request or friendship already exists." : error.message);
     else await loadFriendRequests();
     setFriendActionBusy(null);
   }
