@@ -106,7 +106,7 @@ export default function App() {
   const [showGroup, setShowGroup] = useState(false);
   const [groupName, setGroupName] = useState("");
   const [groupSearch, setGroupSearch] = useState("");
-  const [groupPeople, setGroupPeople] = useState<Profile[]>([]);
+  const [groupPeople, setGroupPeople] = useState<Profile[]>([]);\n  const [groupError, setGroupError] = useState("");\n  const [groupCreating, setGroupCreating] = useState(false);
   const [selectedPeople, setSelectedPeople] = useState<string[]>([]);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [gifTab, setGifTab] = useState(false);
@@ -360,8 +360,17 @@ export default function App() {
     if (!activeId) { setMessages([]); setTypingUsers([]); return; }
     let live = true;
     setTypingUsers([]);
-    supabase.from("messages").select("*").eq("conversation_id", activeId).order("created_at", { ascending: true }).limit(200)
-      .then(({ data }) => { if (live) setMessages((data || []) as Message[]); });
+    setMessageError("");
+    void (async () => {
+      const { data, error } = await supabase.from("messages").select("*").eq("conversation_id", activeId).order("created_at", { ascending: true }).limit(200);
+      if (!live) return;
+      if (error) {
+        setMessages([]);
+        setMessageError(`Couldn't load messages: ${error.message}`);
+        return;
+      }
+      setMessages((data || []) as Message[]);
+    })();
     const channel = supabase.channel(`messages-${activeId}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${activeId}` }, payload => {
         const next = payload.new as Message;
@@ -391,7 +400,7 @@ export default function App() {
         }
       });
     typingChannelRef.current = channel;
-    channel.subscribe();
+    channel.subscribe((status, error) => {\n      if (!live) return;\n      if (status === "SUBSCRIBED") setMessageError("");\n      else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") setMessageError(error?.message || "Live message connection failed. Refresh the chat to reconnect.");\n    });
     return () => {
       live = false;
       typingChannelRef.current = null;
@@ -580,36 +589,55 @@ export default function App() {
   }
 
   async function searchPeople(value: string, group = false) {
-    if (group) setGroupSearch(value); else setSearch(value);
+    if (group) { setGroupSearch(value); setGroupError(""); } else setSearch(value);
     if (value.trim().length < 2) { group ? setGroupPeople([]) : setPeople([]); return; }
-    const { data } = await supabase.from("profiles").select("id,username,display_name,avatar_url,banner_url,status_message,about_me,display_name_font,profile_gradient,profile_gradient_custom,profile_effect,avatar_decoration").ilike("username", `%${value.trim()}%`).neq("id", session?.user.id || "").limit(12);
-    group ? setGroupPeople((data || []) as Profile[]) : setPeople((data || []) as Profile[]);
+    const { data, error } = await supabase.from("profiles").select("id,username,display_name,avatar_url,banner_url,status_message,about_me,display_name_font,profile_gradient,profile_gradient_custom,profile_effect,avatar_decoration").ilike("username", `%${value.trim()}%`).neq("id", session?.user.id || "").limit(30);
+    if (error) { if (group) setGroupError(error.message); else setAuthError(error.message); return; }
+    if (group) {
+      const acceptedIds = new Set(friendRequests.filter(r => r.status === "accepted").map(r => r.requester_id === session?.user.id ? r.addressee_id : r.requester_id));
+      setGroupPeople(((data || []) as Profile[]).filter(person => acceptedIds.has(person.id)));
+    } else setPeople((data || []) as Profile[]);
   }
 
   async function startDirect(person: Profile) {
     if (!session?.user) return;
-    const { data: mine } = await supabase.from("conversation_members").select("conversation_id").eq("user_id", session.user.id);
-    const ids = (mine || []).map((m: {conversation_id:string}) => m.conversation_id);
-    if (ids.length) {
-      const { data: shared } = await supabase.from("conversation_members").select("conversation_id").eq("user_id", person.id).in("conversation_id", ids);
-      if (shared?.length) {
-        const { data: existing } = await supabase.from("conversations").select("id,is_group").in("id", shared.map(x => x.conversation_id)).eq("is_group", false).limit(1).maybeSingle();
-        if (existing) { await loadConversations(); setActiveId(existing.id); setMobileChat(true); setShowPeople(false); return; }
-      }
+    setMessageError("");
+    const { data: conversationId, error } = await supabase.rpc("create_direct_conversation", { p_target_user_id: person.id });
+    if (error || !conversationId) {
+      setMessageError(error?.message || "Couldn't open this direct chat.");
+      return;
     }
-    const { data: convo, error } = await supabase.from("conversations").insert({ created_by: session.user.id, is_group: false }).select().single();
-    if (error || !convo) { setAuthError(error?.message || "Couldn't create chat."); return; }
-    const { error: memberError } = await supabase.from("conversation_members").insert([{ conversation_id: convo.id, user_id: session.user.id }, { conversation_id: convo.id, user_id: person.id }]);
-    if (memberError) { await supabase.from("conversations").delete().eq("id", convo.id); setAuthError(memberError.message); return; }
-    await loadConversations(); setActiveId(convo.id); setMobileChat(true); setShowPeople(false); setSearch("");
+    await loadConversations();
+    setActiveId(String(conversationId));
+    setMobileChat(true);
+    setShowPeople(false);
+    setShowFriends(false);
+    setSearch("");
   }
 
   async function createGroup() {
-    if (!session?.user || !selectedPeople.length || !groupName.trim()) return;
-    const { data: convo, error } = await supabase.from("conversations").insert({ created_by: session.user.id, name: groupName.trim(), is_group: true }).select().single();
-    if (error || !convo) { setAuthError(error?.message || "Couldn't create group."); return; }
-    await supabase.from("conversation_members").insert([session.user.id, ...selectedPeople].map(user_id => ({ conversation_id: convo.id, user_id })));
-    await loadConversations(); setActiveId(convo.id); setMobileChat(true); setShowGroup(false); setSelectedPeople([]); setGroupName(""); setGroupSearch("");
+    if (!session?.user || !selectedPeople.length || !groupName.trim() || groupCreating) return;
+    setGroupCreating(true);
+    setGroupError("");
+    const { data: conversationId, error } = await supabase.rpc("create_group_conversation", {
+      p_name: groupName.trim(),
+      p_member_ids: selectedPeople
+    });
+    if (error || !conversationId) {
+      setGroupError(error?.message || "Couldn't create the group. No group was created.");
+      setGroupCreating(false);
+      return;
+    }
+    await loadConversations();
+    setActiveId(String(conversationId));
+    setMobileChat(true);
+    setShowGroup(false);
+    setSelectedPeople([]);
+    setGroupName("");
+    setGroupSearch("");
+    setGroupPeople([]);
+    setGroupError("");
+    setGroupCreating(false);
   }
 
   function broadcastTyping(isTyping: boolean) {
@@ -637,14 +665,15 @@ export default function App() {
     setSending(true); setDraft(""); setEmojiOpen(false);
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     broadcastTyping(false);
-    const { error } = await supabase.from("messages").insert({
+    const { data: savedMessage, error } = await supabase.from("messages").insert({
       conversation_id: activeId, sender_id: session.user.id, content: content.trim(), kind,
       reply_to: replyingTo?.id || null
-    });
+    }).select("*").single();
     if (error) {
       setDraft(content);
-      setMessageError(error.message);
+      setMessageError(`Message wasn't sent: ${error.message}`);
     } else {
+      if (savedMessage) setMessages(prev => prev.some(message => message.id === savedMessage.id) ? prev : [...prev, savedMessage as Message]);
       setReplyingTo(null);
       setMessageError("");
       void supabase.functions.invoke("tuffchat-push", { body: { event: "message", conversation_id: activeId, content: content.trim() } });
@@ -895,7 +924,7 @@ export default function App() {
     </section>
     {showPeople && <div className="modal-backdrop" onClick={()=>setShowPeople(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><div><h2>Find your people</h2><p>Search by their username.</p></div><button onClick={()=>setShowPeople(false)}><X/></button></div><div className="modal-search"><Search size={18}/><input autoFocus value={search} onChange={e=>searchPeople(e.target.value)} placeholder="Search usernames…"/></div>{people.map(p=>{const relation=relationshipFor(p.id);const incoming=relation?.addressee_id===session.user.id;return <div className="person-row friend-search-row" key={p.id}><button className="friend-person-open" onClick={()=>setViewedProfile(p)}><Avatar profile={p}/><span><b className={`profile-name-font-${p.display_name_font || "modern"}`}>{p.display_name || p.username}</b><small>@{p.username}</small></span></button>{relation?.status==="accepted" ? <button className="friend-action-btn" onClick={()=>startDirect(p)}><MessageCircle size={16}/> Message</button> : relation?.status==="pending" && incoming ? <button className="friend-action-btn" onClick={()=>void respondToFriendRequest(relation,"accepted")}><Check size={16}/> Accept</button> : relation?.status==="pending" ? <span className="friend-status"><Clock size={14}/> Sent</span> : <button className="friend-action-btn" onClick={()=>void sendFriendRequest(p)} disabled={!!friendActionBusy}><UserPlus size={16}/> Add</button>}</div>;})}{search.length<2 && <div className="modal-hint">Type at least 2 characters to search.</div>}{search.length>=2 && !people.length && <div className="modal-hint">No users found yet.</div>}</div></div>}
     {showFriends && <div className="modal-backdrop" onClick={()=>setShowFriends(false)}><div className="modal friends-modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><div><h2>Your friends</h2><p>Manage your friends and incoming requests.</p></div><button onClick={()=>setShowFriends(false)}><X/></button></div><div className="friends-section-title">INCOMING REQUESTS <span>{friendRequests.filter(r=>r.status==="pending" && r.addressee_id===session.user.id).length}</span></div>{friendRequests.filter(r=>r.status==="pending" && r.addressee_id===session.user.id).map(r=><div className="person-row friend-search-row" key={r.id}><button className="friend-person-open" onClick={()=>{if(r.requester)setViewedProfile(r.requester);}}><Avatar profile={r.requester}/><span><b>{r.requester?.display_name || r.requester?.username || "User"}</b><small>@{r.requester?.username}</small></span></button><button className="friend-action-btn" onClick={()=>void respondToFriendRequest(r,"accepted")} disabled={!!friendActionBusy}><Check size={15}/> Accept</button><button className="friend-reject-btn" onClick={()=>void respondToFriendRequest(r,"rejected")} disabled={!!friendActionBusy}><X size={15}/></button></div>)}{!friendRequests.some(r=>r.status==="pending" && r.addressee_id===session.user.id) && <div className="modal-hint compact-hint">No incoming requests.</div>}<div className="friends-section-title">YOUR FRIENDS <span>{friendRequests.filter(r=>r.status==="accepted").length}</span></div>{friendRequests.filter(r=>r.status==="accepted").map(r=>{const person=r.requester_id===session.user.id?r.addressee:r.requester;return <div className="person-row friend-search-row" key={r.id}><button className="friend-person-open" onClick={()=>{if(person)setViewedProfile(person);}}><Avatar profile={person}/><span><b>{person?.display_name || person?.username || "Friend"}</b><small>@{person?.username}</small></span></button><button className="friend-action-btn" onClick={()=>{if(person){startDirect(person);setShowFriends(false);}}}><MessageCircle size={15}/> Message</button><button className="friend-reject-btn" title="Remove friend" onClick={()=>void removeFriend(r)} disabled={!!friendActionBusy}><UserMinus size={15}/></button></div>})}{!friendRequests.some(r=>r.status==="accepted") && <div className="modal-hint compact-hint">No friends yet. Search for someone and send a request!</div>}<div className="friends-section-title">SENT REQUESTS <span>{friendRequests.filter(r=>r.status==="pending" && r.requester_id===session.user.id).length}</span></div>{friendRequests.filter(r=>r.status==="pending" && r.requester_id===session.user.id).map(r=><div className="person-row friend-search-row" key={r.id}><button className="friend-person-open"><Avatar profile={r.addressee}/><span><b>{r.addressee?.display_name || r.addressee?.username || "User"}</b><small>@{r.addressee?.username}</small></span></button><span className="friend-status"><Clock size={14}/> Pending</span><button className="friend-reject-btn" title="Cancel request" onClick={()=>void supabase.from("friend_requests").delete().eq("id",r.id).then(()=>loadFriendRequests())} disabled={!!friendActionBusy}><X size={15}/></button></div>)}</div></div>}
-    {showGroup && <div className="modal-backdrop" onClick={()=>setShowGroup(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><div><h2>Make a group</h2><p>Bring the whole crew together.</p></div><button onClick={()=>setShowGroup(false)}><X/></button></div><label className="modal-label">Group name<input value={groupName} onChange={e=>setGroupName(e.target.value)} placeholder="The gang" /></label><div className="modal-search"><Search size={18}/><input value={groupSearch} onChange={e=>searchPeople(e.target.value,true)} placeholder="Add people by username…"/></div>{groupPeople.map(p=><button className="person-row" key={p.id} onClick={()=>setSelectedPeople(s=>s.includes(p.id)?s.filter(x=>x!==p.id):[...s,p.id])}><Avatar profile={p}/><span><b className={`profile-name-font-${p.display_name_font || "modern"}`}>{p.display_name || p.username}</b><small>@{p.username}</small></span><span className={`select-dot ${selectedPeople.includes(p.id) ? "checked" : ""}`}>{selectedPeople.includes(p.id)?"✓":"+"}</span></button>)}<div className="modal-bottom"><span>{selectedPeople.length} selected</span><button className="primary-btn" disabled={!groupName.trim() || !selectedPeople.length} onClick={createGroup}>Create group</button></div></div></div>}
+    {showGroup && <div className="modal-backdrop" onClick={()=>setShowGroup(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><div><h2>Make a group</h2><p>Bring the whole crew together.</p></div><button onClick={()=>{setShowGroup(false);setGroupError("");}}><X/></button></div><label className="modal-label">Group name<input value={groupName} onChange={e=>setGroupName(e.target.value)} placeholder="The gang" /></label><div className="modal-search"><Search size={18}/><input value={groupSearch} onChange={e=>searchPeople(e.target.value,true)} placeholder="Add friends by username…"/></div>{groupError && <div className="message-error">{groupError}</div>}{groupPeople.map(p=><button className="person-row" key={p.id} onClick={()=>setSelectedPeople(s=>s.includes(p.id)?s.filter(x=>x!==p.id):[...s,p.id])}><Avatar profile={p}/><span><b className={`profile-name-font-${p.display_name_font || "modern"}`}>{p.display_name || p.username}</b><small>@{p.username}</small></span><span className={`select-dot ${selectedPeople.includes(p.id) ? "checked" : ""}`}>{selectedPeople.includes(p.id)?"✓":"+"}</span></button>)}<div className="modal-bottom"><span>{selectedPeople.length} selected</span><button className="primary-btn" disabled={!groupName.trim() || !selectedPeople.length || groupCreating} onClick={createGroup}>{groupCreating ? "Creating…" : "Create group"}</button></div></div></div>}
     {forwardingMessage && <div className="modal-backdrop" onClick={()=>setForwardingMessage(null)}><div className="modal forward-modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><div><h2>Forward message</h2><p>Choose where to send this message.</p></div><button onClick={()=>setForwardingMessage(null)}><X/></button></div>{sortedConversations.map(conversation=>{const self=isSelfChat(conversation);const person=conversation.conversation_members?.find(member=>member.user_id!==session.user.id)?.profiles;const title=self?"You":conversation.is_group?(conversation.name||"Group chat"):(person?.display_name||person?.username||"Direct chat");return <button key={conversation.id} className="person-row" onClick={()=>forwardMessageTo(conversation)}><Avatar profile={self?profile:person} label={title}/><span><b>{title}</b><small>{conversation.is_group?"Group":self?"Your private notes":"Direct message"}</small></span><Forward size={17}/></button>;})}</div></div>}
     
     <div id="google_translate_element" className="google-translate-host" aria-hidden="true"/>
