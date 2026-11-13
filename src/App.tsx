@@ -99,6 +99,7 @@ export default function App() {
   const [draft, setDraft] = useState("");
   const [search, setSearch] = useState("");
   const [people, setPeople] = useState<Profile[]>([]);
+  const [peopleError, setPeopleError] = useState("");
   const [showPeople, setShowPeople] = useState(false);
   const [showFriends, setShowFriends] = useState(false);
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
@@ -280,41 +281,72 @@ export default function App() {
     } catch (error) { setPushError(error instanceof Error ? error.message : "Could not enable push notifications."); }
   }
 
-  async function loadConversations() {
-    if (!session?.user) return;
+  async function loadConversations(preferredConversationId?: string): Promise<boolean> {
+    if (!session?.user) return false;
     const { data: selfConversationId, error: selfChatError } = await supabase.rpc("ensure_self_conversation");
     if (selfChatError || !selfConversationId) {
-      setAuthError(selfChatError?.message || "Couldn't create your personal chat.");
+      const reason = selfChatError?.message || "Couldn't create your personal chat.";
+      setAuthError(reason);
+      setMessageError(reason);
+      return false;
     }
-    const { data: memberships, error: membershipError } = await supabase.from("conversation_members").select("conversation_id").eq("user_id", session.user.id);
-    if (membershipError) setAuthError(membershipError.message);
 
-    // Always include the ID returned by the self-chat RPC. This prevents a
-    // stale/filtered membership query from hiding the personal conversation.
+    // Fetch the conversation, membership and profile rows independently.
+    // The previous nested PostgREST relationship select could fail as one
+    // unit and silently leave the entire sidebar empty.
+    const { data: memberships, error: membershipError } = await supabase
+      .from("conversation_members").select("conversation_id,user_id").eq("user_id", session.user.id);
+    if (membershipError) {
+      setAuthError(membershipError.message);
+      setMessageError(`Couldn't load your chats: ${membershipError.message}`);
+      return false;
+    }
     const ids = [...new Set([
       ...(memberships || []).map((m: {conversation_id:string}) => m.conversation_id),
-      ...(selfConversationId ? [String(selfConversationId)] : [])
+      String(selfConversationId),
+      ...(preferredConversationId ? [preferredConversationId] : [])
     ])];
-    let rows: Conversation[] = [];
-    if (ids.length) {
-      const { data, error } = await supabase.from("conversations").select("id,name,is_group,created_at,conversation_members(user_id,profiles(id,username,display_name,avatar_url,banner_url,status_message,about_me,display_name_font,profile_gradient,profile_gradient_custom,profile_effect,avatar_decoration))").in("id", ids).order("created_at", { ascending: false });
-      if (error) setAuthError(error.message);
-      rows = (data || []) as unknown as Conversation[];
+
+    const [{ data: rows, error: conversationError }, { data: allMembers, error: membersError }] = await Promise.all([
+      supabase.from("conversations").select("id,name,is_group,created_at").in("id", ids).order("created_at", { ascending: false }),
+      supabase.from("conversation_members").select("conversation_id,user_id").in("conversation_id", ids)
+    ]);
+    if (conversationError || membersError) {
+      const reason = conversationError?.message || membersError?.message || "Unknown database error";
+      setAuthError(reason);
+      setMessageError(`Couldn't load your chats: ${reason}`);
+      return false;
     }
 
-    // If PostgREST still omits the row (for example, because of a relationship
-    // visibility issue), construct its sidebar entry from the verified RPC ID.
-    if (selfConversationId && !rows.some(row => row.id === String(selfConversationId))) {
-      rows.unshift({
-        id: String(selfConversationId),
-        name: "You",
-        is_group: false,
+    const memberRows = allMembers || [];
+    const profileIds = [...new Set(memberRows.map((m: {user_id:string}) => m.user_id))];
+    const { data: profileRows, error: profilesError } = profileIds.length
+      ? await supabase.from("profiles").select("id,username,display_name,avatar_url,banner_url,status_message,about_me,display_name_font,profile_gradient,profile_gradient_custom,profile_effect,avatar_decoration").in("id", profileIds)
+      : { data: [], error: null };
+    if (profilesError) {
+      setAuthError(profilesError.message);
+      setMessageError(`Couldn't load chat members: ${profilesError.message}`);
+      return false;
+    }
+    const profileById = new Map(((profileRows || []) as Profile[]).map(person => [person.id, person]));
+    const enriched = ((rows || []) as Omit<Conversation, "conversation_members">[]).map(row => ({
+      ...row,
+      conversation_members: memberRows
+        .filter((member: {conversation_id:string}) => member.conversation_id === row.id)
+        .map((member: {user_id:string}) => ({ user_id: member.user_id, profiles: profileById.get(member.user_id) || null }))
+    })) as Conversation[];
+
+    if (!enriched.some(row => row.id === String(selfConversationId))) {
+      enriched.push({
+        id: String(selfConversationId), name: "You", is_group: false,
         created_at: new Date().toISOString(),
-        conversation_members: [{ user_id: session.user.id, profiles: null }]
+        conversation_members: [{ user_id: session.user.id, profiles: profile || null }]
       });
     }
-    setConversations(rows);
+    setConversations(enriched);
     if (!activeId && selfConversationId) setActiveId(String(selfConversationId));
+    setMessageError("");
+    return true;
   }
 
   useEffect(() => {
@@ -595,7 +627,7 @@ export default function App() {
   }
 
   async function searchPeople(value: string, group = false) {
-    if (group) { setGroupSearch(value); setGroupError(""); } else setSearch(value);
+    if (group) { setGroupSearch(value); setGroupError(""); } else { setSearch(value); setPeopleError(""); }
     if (value.trim().length < 2) { group ? setGroupPeople([]) : setPeople([]); return; }
     const { data, error } = await supabase.from("profiles").select("id,username,display_name,avatar_url,banner_url,status_message,about_me,display_name_font,profile_gradient,profile_gradient_custom,profile_effect,avatar_decoration").ilike("username", `%${value.trim()}%`).neq("id", session?.user.id || "").limit(30);
     if (error) { if (group) setGroupError(error.message); else setAuthError(error.message); return; }
@@ -607,18 +639,26 @@ export default function App() {
 
   async function startDirect(person: Profile) {
     if (!session?.user) return;
+    setPeopleError("");
     setMessageError("");
     const { data: conversationId, error } = await supabase.rpc("create_direct_conversation", { p_target_user_id: person.id });
     if (error || !conversationId) {
-      setMessageError(error?.message || "Couldn't open this direct chat.");
+      const reason = error?.message || "Couldn't open this direct chat.";
+      setPeopleError(reason);
+      setMessageError(reason);
       return;
     }
-    await loadConversations();
+    const loaded = await loadConversations(String(conversationId));
+    if (!loaded) {
+      setPeopleError("The chat was created, but Tuffchat couldn't load it. Refresh the page and try again.");
+      return;
+    }
     setActiveId(String(conversationId));
     setMobileChat(true);
     setShowPeople(false);
     setShowFriends(false);
     setSearch("");
+    setPeopleError("");
   }
 
   async function createGroup() {
@@ -634,7 +674,12 @@ export default function App() {
       setGroupCreating(false);
       return;
     }
-    await loadConversations();
+    const loaded = await loadConversations(String(conversationId));
+    if (!loaded) {
+      setGroupError("The group was created, but Tuffchat couldn't load it. Refresh the page to see it.");
+      setGroupCreating(false);
+      return;
+    }
     setActiveId(String(conversationId));
     setMobileChat(true);
     setShowGroup(false);
@@ -879,7 +924,7 @@ export default function App() {
       {viewedProfile.status_message && <div className="profile-status-full">“{viewedProfile.status_message}”</div>}
       {viewedProfile.about_me && <div className="profile-about"><h3>About me</h3><p>{viewedProfile.about_me}</p></div>}
       {viewedProfile.id !== session.user.id && (mutualGroups.length > 0 || mutualProfiles.length > 0) && <div className="profile-mutuals"><div className="profile-mutuals-heading"><b>Mutuals</b><span>{mutualGroups.length} shared {mutualGroups.length === 1 ? "group" : "groups"}</span></div>{mutualGroups.length > 0 && <div className="mutual-group-list">{mutualGroups.slice(0,4).map((group,index)=><span key={`${group}-${index}`}>#{group}</span>)}</div>}{mutualProfiles.length > 0 && <div className="mutual-people-list">{mutualProfiles.map(person=><span key={person.id}><Avatar profile={person} size="sm"/>{person.display_name || person.username}</span>)}</div>}</div>}
-      <div className="profile-card-footer">{viewedProfile.id===session.user.id ? <button className="primary-btn" onClick={()=>{setViewedProfile(null);openSettings();}}><Settings size={16}/> Edit profile</button> : (() => { const relation=relationshipFor(viewedProfile.id); const incoming=relation?.addressee_id===session.user.id; if(relation?.status==="accepted") return <><button className="secondary-btn" onClick={()=>void removeFriend(relation)} disabled={!!friendActionBusy}><UserMinus size={16}/> Remove friend</button><button className="primary-btn" onClick={()=>{startDirect(viewedProfile);setViewedProfile(null);}}><MessageCircle size={16}/> Message</button></>; if(relation?.status==="pending" && incoming) return <><button className="secondary-btn" onClick={()=>void respondToFriendRequest(relation,"rejected")} disabled={!!friendActionBusy}>Decline</button><button className="primary-btn" onClick={()=>void respondToFriendRequest(relation,"accepted")} disabled={!!friendActionBusy}><UserCheck size={16}/> Accept request</button></>; if(relation?.status==="pending") return <button className="secondary-btn" disabled><Clock size={16}/> Request sent</button>; return <button className="primary-btn" onClick={()=>void sendFriendRequest(viewedProfile)} disabled={!!friendActionBusy}><UserPlus size={16}/> Add friend</button>; })()}</div>
+      <div className="profile-card-footer">{peopleError && <div className="message-error">{peopleError}</div>}{viewedProfile.id===session.user.id ? <button className="primary-btn" onClick={()=>{setViewedProfile(null);openSettings();}}><Settings size={16}/> Edit profile</button> : (() => { const relation=relationshipFor(viewedProfile.id); const incoming=relation?.addressee_id===session.user.id; if(relation?.status==="accepted") return <><button className="secondary-btn" onClick={()=>void removeFriend(relation)} disabled={!!friendActionBusy}><UserMinus size={16}/> Remove friend</button><button className="primary-btn" onClick={()=>{startDirect(viewedProfile);setViewedProfile(null);}}><MessageCircle size={16}/> Message</button></>; if(relation?.status==="pending" && incoming) return <><button className="secondary-btn" onClick={()=>void respondToFriendRequest(relation,"rejected")} disabled={!!friendActionBusy}>Decline</button><button className="primary-btn" onClick={()=>void respondToFriendRequest(relation,"accepted")} disabled={!!friendActionBusy}><UserCheck size={16}/> Accept request</button></>; if(relation?.status==="pending") return <button className="secondary-btn" disabled><Clock size={16}/> Request sent</button>; return <button className="primary-btn" onClick={()=>void sendFriendRequest(viewedProfile)} disabled={!!friendActionBusy}><UserPlus size={16}/> Add friend</button>; })()}</div>
     </section></div>}
     {settingsOpen && <div className="modal-backdrop settings-backdrop" onClick={()=>setSettingsOpen(false)}><form className="settings-modal" onSubmit={saveProfile} onClick={e=>e.stopPropagation()}><div className="settings-top"><div><span className="settings-kicker">YOUR ACCOUNT</span><h2>Settings</h2><p>Make Tuffchat feel like yours.</p></div><button type="button" className="icon-close" onClick={()=>setSettingsOpen(false)} aria-label="Close settings"><X size={20}/></button></div><div className="settings-layout">
 <nav className="settings-nav" aria-label="Settings sections">
@@ -916,6 +961,8 @@ export default function App() {
       <div className="chat-list-label">DIRECT MESSAGES <span>{sortedConversations.length}</span></div>
       <div className="chat-list">{sortedConversations.map(c=>{const selfChat = isSelfChat(c); const member = selfChat ? profile : c.conversation_members?.find(m=>m.user_id!==session.user.id)?.profiles; const title = selfChat ? "You" : c.is_group ? c.name || "Group chat" : member?.display_name || member?.username || "Direct chat"; return <button key={c.id} className={`chat-row ${activeId===c.id?"selected":""} ${selfChat?"self-chat-row":""}`} onClick={()=>{setActiveId(c.id);setMobileChat(true);}}><span className="avatar-open" aria-hidden="true"><Avatar profile={member} label={title}/></span><span className="chat-row-copy"><b className={member ? `profile-name-font-${member.display_name_font || "modern"}` : undefined}>{title}</b><small>{lastMessages[c.id]}</small></span><span className="chat-time">{selfChat ? "NOTE" : new Date(c.created_at).toLocaleDateString([], {month:"short",day:"numeric"})}</span></button>;})}
       {!sortedConversations.length && <div className="empty-list"><MessageCircle size={26}/><b>No direct messages yet</b><span>Find a friend and say hello.</span><button onClick={()=>setShowPeople(true)}>Find people</button></div>}</div>
+      <div className="chat-list-label group-list-heading">GROUP CHATS <span>{groupConversations.length}</span></div>
+      <div className="chat-list group-chat-list">{groupConversations.map(group=><button key={group.id} className={`chat-row ${activeId===group.id?"selected":""}`} onClick={()=>{setActiveId(group.id);setMobileChat(true);}}><span className="avatar-open group-list-avatar" aria-hidden="true"><Avatar label={group.name || "Group"}/></span><span className="chat-row-copy"><b>{group.name || "Group chat"}</b><small>{group.conversation_members?.length || 0} members · Open group</small></span><span className="chat-time">{new Date(group.created_at).toLocaleDateString([], {month:"short",day:"numeric"})}</span></button>)}{!groupConversations.length && <div className="empty-list group-empty-list"><span>No groups yet.</span></div>}</div>
       <footer className="side-footer"><span className="online-dot"/> Your space is ready</footer>
     </aside>
     <section className={`chat-panel ${mobileChat ? "chat-panel-mobile" : ""}`}>
@@ -928,7 +975,7 @@ export default function App() {
       {aiMode && isSelfChat(active) ? <form className="composer ai-composer" onSubmit={sendAiMessage}><label className="ai-image-button" title="Attach an image"><ImageIcon size={20}/><input type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>{const file=e.target.files?.[0];if(!file)return;if(file.size>4*1024*1024){setAiError("Images must be 4 MB or smaller.");e.target.value="";return;}if(!["image/png","image/jpeg","image/webp"].includes(file.type)){setAiError("Choose a PNG, JPG or WEBP image.");e.target.value="";return;}const reader=new FileReader();reader.onload=()=>{setAiImageData(String(reader.result));setAiError("");};reader.readAsDataURL(file);e.target.value="";}}/></label><input value={aiDraft} onChange={e=>setAiDraft(e.target.value)} placeholder="Message Tuffchat AI…"/><button type="submit" className="send-btn" disabled={(!aiDraft.trim() && !aiImageData) || aiSending}>{aiSending ? <span className="ai-spinner"/> : <Send size={19}/>}</button></form> : <form className="composer" onSubmit={e=>{e.preventDefault();sendMessage();}}><button type="button" title="Emoji and GIFs" aria-label="Emoji and GIFs" className={`composer-tool ${emojiOpen?"active":""}`} onClick={()=>{setEmojiOpen(v=>!v);setGifTab(false);}}><Smile size={21}/></button><label title="Upload image" aria-label="Upload image" className={`composer-tool image-upload-tool ${chatImageUploading?"uploading":""}`}><ImagePlus size={21}/><input type="file" accept="image/png,image/jpeg,image/webp,image/gif" disabled={chatImageUploading || sending} onChange={e=>{const file=e.target.files?.[0];if(file)void uploadChatImage(file);e.currentTarget.value="";}}/></label><input value={draft} onChange={e=>handleDraftChange(e.target.value)} placeholder="Type a message…"/><button type="submit" className="send-btn" disabled={!draft.trim() || sending}><Send size={19}/></button></form>}
       </> : <div className="welcome-panel"><div className="welcome-graphic"><div className="welcome-icon"><MessageCircle size={42}/></div><span>✦</span><span>✦</span></div><h1>Good to see you.</h1><p>Pick a conversation or find your people to get started.</p><button className="primary-btn" onClick={()=>setShowPeople(true)}><Plus size={18}/> Start a chat</button><div className="encryption-note">Private conversations for your favourite people.</div></div>}
     </section>
-    {showPeople && <div className="modal-backdrop" onClick={()=>setShowPeople(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><div><h2>Find your people</h2><p>Search by their username.</p></div><button onClick={()=>setShowPeople(false)}><X/></button></div><div className="modal-search"><Search size={18}/><input autoFocus value={search} onChange={e=>searchPeople(e.target.value)} placeholder="Search usernames…"/></div>{people.map(p=>{const relation=relationshipFor(p.id);const incoming=relation?.addressee_id===session.user.id;return <div className="person-row friend-search-row" key={p.id}><button className="friend-person-open" onClick={()=>setViewedProfile(p)}><Avatar profile={p}/><span><b className={`profile-name-font-${p.display_name_font || "modern"}`}>{p.display_name || p.username}</b><small>@{p.username}</small></span></button>{relation?.status==="accepted" ? <button className="friend-action-btn" onClick={()=>startDirect(p)}><MessageCircle size={16}/> Message</button> : relation?.status==="pending" && incoming ? <button className="friend-action-btn" onClick={()=>void respondToFriendRequest(relation,"accepted")}><Check size={16}/> Accept</button> : relation?.status==="pending" ? <span className="friend-status"><Clock size={14}/> Sent</span> : <button className="friend-action-btn" onClick={()=>void sendFriendRequest(p)} disabled={!!friendActionBusy}><UserPlus size={16}/> Add</button>}</div>;})}{search.length<2 && <div className="modal-hint">Type at least 2 characters to search.</div>}{search.length>=2 && !people.length && <div className="modal-hint">No users found yet.</div>}</div></div>}
+    {showPeople && <div className="modal-backdrop" onClick={()=>setShowPeople(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><div><h2>Find your people</h2><p>Search by their username.</p></div><button onClick={()=>setShowPeople(false)}><X/></button></div><div className="modal-search"><Search size={18}/><input autoFocus value={search} onChange={e=>searchPeople(e.target.value)} placeholder="Search usernames…"/></div>{peopleError && <div className="message-error">{peopleError}</div>}{people.map(p=>{const relation=relationshipFor(p.id);const incoming=relation?.addressee_id===session.user.id;return <div className="person-row friend-search-row" key={p.id}><button className="friend-person-open" onClick={()=>setViewedProfile(p)}><Avatar profile={p}/><span><b className={`profile-name-font-${p.display_name_font || "modern"}`}>{p.display_name || p.username}</b><small>@{p.username}</small></span></button>{relation?.status==="accepted" ? <button className="friend-action-btn" onClick={()=>startDirect(p)}><MessageCircle size={16}/> Message</button> : relation?.status==="pending" && incoming ? <button className="friend-action-btn" onClick={()=>void respondToFriendRequest(relation,"accepted")}><Check size={16}/> Accept</button> : relation?.status==="pending" ? <span className="friend-status"><Clock size={14}/> Sent</span> : <button className="friend-action-btn" onClick={()=>void sendFriendRequest(p)} disabled={!!friendActionBusy}><UserPlus size={16}/> Add</button>}</div>;})}{search.length<2 && <div className="modal-hint">Type at least 2 characters to search.</div>}{search.length>=2 && !people.length && <div className="modal-hint">No users found yet.</div>}</div></div>}
     {showFriends && <div className="modal-backdrop" onClick={()=>setShowFriends(false)}><div className="modal friends-modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><div><h2>Your friends</h2><p>Manage your friends and incoming requests.</p></div><button onClick={()=>setShowFriends(false)}><X/></button></div><div className="friends-section-title">INCOMING REQUESTS <span>{friendRequests.filter(r=>r.status==="pending" && r.addressee_id===session.user.id).length}</span></div>{friendRequests.filter(r=>r.status==="pending" && r.addressee_id===session.user.id).map(r=><div className="person-row friend-search-row" key={r.id}><button className="friend-person-open" onClick={()=>{if(r.requester)setViewedProfile(r.requester);}}><Avatar profile={r.requester}/><span><b>{r.requester?.display_name || r.requester?.username || "User"}</b><small>@{r.requester?.username}</small></span></button><button className="friend-action-btn" onClick={()=>void respondToFriendRequest(r,"accepted")} disabled={!!friendActionBusy}><Check size={15}/> Accept</button><button className="friend-reject-btn" onClick={()=>void respondToFriendRequest(r,"rejected")} disabled={!!friendActionBusy}><X size={15}/></button></div>)}{!friendRequests.some(r=>r.status==="pending" && r.addressee_id===session.user.id) && <div className="modal-hint compact-hint">No incoming requests.</div>}<div className="friends-section-title">YOUR FRIENDS <span>{friendRequests.filter(r=>r.status==="accepted").length}</span></div>{friendRequests.filter(r=>r.status==="accepted").map(r=>{const person=r.requester_id===session.user.id?r.addressee:r.requester;return <div className="person-row friend-search-row" key={r.id}><button className="friend-person-open" onClick={()=>{if(person)setViewedProfile(person);}}><Avatar profile={person}/><span><b>{person?.display_name || person?.username || "Friend"}</b><small>@{person?.username}</small></span></button><button className="friend-action-btn" onClick={()=>{if(person){startDirect(person);setShowFriends(false);}}}><MessageCircle size={15}/> Message</button><button className="friend-reject-btn" title="Remove friend" onClick={()=>void removeFriend(r)} disabled={!!friendActionBusy}><UserMinus size={15}/></button></div>})}{!friendRequests.some(r=>r.status==="accepted") && <div className="modal-hint compact-hint">No friends yet. Search for someone and send a request!</div>}<div className="friends-section-title">SENT REQUESTS <span>{friendRequests.filter(r=>r.status==="pending" && r.requester_id===session.user.id).length}</span></div>{friendRequests.filter(r=>r.status==="pending" && r.requester_id===session.user.id).map(r=><div className="person-row friend-search-row" key={r.id}><button className="friend-person-open"><Avatar profile={r.addressee}/><span><b>{r.addressee?.display_name || r.addressee?.username || "User"}</b><small>@{r.addressee?.username}</small></span></button><span className="friend-status"><Clock size={14}/> Pending</span><button className="friend-reject-btn" title="Cancel request" onClick={()=>void supabase.from("friend_requests").delete().eq("id",r.id).then(()=>loadFriendRequests())} disabled={!!friendActionBusy}><X size={15}/></button></div>)}</div></div>}
     {showGroup && <div className="modal-backdrop" onClick={()=>setShowGroup(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><div><h2>Make a group</h2><p>Bring the whole crew together.</p></div><button onClick={()=>{setShowGroup(false);setGroupError("");}}><X/></button></div><label className="modal-label">Group name<input value={groupName} onChange={e=>setGroupName(e.target.value)} placeholder="The gang" /></label><div className="modal-search"><Search size={18}/><input value={groupSearch} onChange={e=>searchPeople(e.target.value,true)} placeholder="Add friends by username…"/></div><div className="modal-hint">Only accepted friends can be added to a group.</div>{groupError && <div className="message-error">{groupError}</div>}{groupSearch.trim().length>=2 && !groupPeople.length && !groupError && <div className="modal-hint">No matching friends found. Add them as friends first.</div>}{groupPeople.map(p=><button className="person-row" key={p.id} onClick={()=>setSelectedPeople(s=>s.includes(p.id)?s.filter(x=>x!==p.id):[...s,p.id])}><Avatar profile={p}/><span><b className={`profile-name-font-${p.display_name_font || "modern"}`}>{p.display_name || p.username}</b><small>@{p.username}</small></span><span className={`select-dot ${selectedPeople.includes(p.id) ? "checked" : ""}`}>{selectedPeople.includes(p.id)?"✓":"+"}</span></button>)}<div className="modal-bottom"><span>{selectedPeople.length} selected</span><button className="primary-btn" disabled={!groupName.trim() || !selectedPeople.length || groupCreating} onClick={createGroup}>{groupCreating ? "Creating…" : "Create group"}</button></div></div></div>}
     {forwardingMessage && <div className="modal-backdrop" onClick={()=>setForwardingMessage(null)}><div className="modal forward-modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><div><h2>Forward message</h2><p>Choose where to send this message.</p></div><button onClick={()=>setForwardingMessage(null)}><X/></button></div>{sortedConversations.map(conversation=>{const self=isSelfChat(conversation);const person=conversation.conversation_members?.find(member=>member.user_id!==session.user.id)?.profiles;const title=self?"You":conversation.is_group?(conversation.name||"Group chat"):(person?.display_name||person?.username||"Direct chat");return <button key={conversation.id} className="person-row" onClick={()=>forwardMessageTo(conversation)}><Avatar profile={self?profile:person} label={title}/><span><b>{title}</b><small>{conversation.is_group?"Group":self?"Your private notes":"Direct message"}</small></span><Forward size={17}/></button>;})}</div></div>}
