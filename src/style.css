@@ -713,3 +713,20 @@ body{top:0!important}
 .theme-light .group-manage-menu{background:#fff;border-color:#dce5e8;box-shadow:0 16px 44px #1b293022}
 .theme-light .group-manage-menu>b,.theme-light .group-manage-menu>button{color:#26363d}
 .theme-light .group-manage-menu>button.group-delete-option{color:#b44c5d}
+
+
+/* Group details and system-style message states */
+.group-title-open{padding:0;border:0;background:transparent;color:inherit;font:inherit;font-weight:800;text-align:left;cursor:pointer}
+.group-title-open:hover{color:var(--accent-light)}
+.group-details-modal .modal-label textarea{display:block;width:100%;min-height:88px;margin-top:8px;resize:vertical;border:1px solid #3b5059;border-radius:10px;background:#17252c;color:#e9edef;padding:11px;font:inherit;outline:none}
+.group-details-modal .modal-label textarea:focus{border-color:var(--accent)}
+.group-description-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:8px}
+.group-description-footer>span{font-size:11px;color:#8d9ca3}
+.group-detail-members{max-height:280px;overflow:auto}
+.group-owner-tag{margin-left:auto;color:var(--accent-light);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px}
+.deleted-message{color:#9aa8ae;font-style:italic}
+.group-ai-reply{display:flex;flex-direction:column;gap:7px;white-space:pre-wrap}
+.group-ai-reply>b{display:flex;align-items:center;gap:6px;color:var(--accent-light);font-size:11px}
+.theme-light .group-details-modal .modal-label textarea{background:#f6f8f9;color:#26363d;border-color:#dce5e8}
+.theme-light .group-title-open{color:#26363d}
+.theme-light .deleted-message{color:#78868c}
